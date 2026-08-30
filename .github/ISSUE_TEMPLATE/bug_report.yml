@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible defect that is not a private security vulnerability
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include secrets, private source code, local databases, or credentials. Security vulnerabilities should follow SECURITY.md instead of a public issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide the smallest safe reproduction and exact commands.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Windows 11 + WSL2 Ubuntu
+        - Windows 11 without WSL2
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version
+      description: Git commit SHA or release version.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include relevant doctor/test output after removing secrets and private paths.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, tokens, private keys, private source code, and sensitive logs from this report.
+          required: true
+        - label: This is not a private security vulnerability.
+          required: true

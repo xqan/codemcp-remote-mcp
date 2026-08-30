@@ -1,0 +1,42 @@
+# Orchestration attachments are inputs, not project source.
+upload/
+.git-worktree/
+
+# Python and uv
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pytest_cache/
+.ruff_cache/
+**/.ruff_cache/
+.mypy_cache/
+**/.mypy_cache/
+.uv-cache/
+
+# Local runtime state and secrets
+.local/
+**/.local/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.log
+.env
+.env.*
+!.env.example
+config/tunnel-profile.local.env
+config/projects.toml
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+**/*.egg-info/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

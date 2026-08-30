@@ -1,0 +1,12 @@
+[upstream]
+repository = "https://github.com/ezyang/codemcp.git"
+release = "0.3.0"
+commit = "683e6ec29b15b91ec12430afabf5a45ed57d2489"
+license = "Apache-2.0"
+model_calls_allowed = false
+pin_policy = "exact-release-commit"
+
+[adapter]
+transport_candidates = ["stdio", "http", "sse"]
+direct_chatgpt_exposure = false
+phase_1_required = true

@@ -1,0 +1,23 @@
+[projects.sample_project]
+root = "D:/workspace/example-project"
+allowed_branches = ["develop", "develop/*", "codex/*", "feature/*"]
+require_clean_workspace = true
+codemcp_config = "codemcp.toml"
+
+[projects.sample_project.commands.test]
+kind = "test"
+argv = ["mvn", "-q", "test"]
+timeout_seconds = 900
+approval = "not-required"
+
+[projects.sample_project.commands.format]
+kind = "format"
+argv = ["mvn", "-q", "spotless:apply"]
+timeout_seconds = 300
+approval = "not-required"
+
+[projects.sample_project.commands.build]
+kind = "build"
+argv = ["mvn", "-q", "-DskipTests", "package"]
+timeout_seconds = 900
+approval = "required"

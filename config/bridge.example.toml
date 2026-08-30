@@ -1,0 +1,35 @@
+[server]
+host = "127.0.0.1"
+port = 46200
+path = "/mcp"
+transport = "streamable-http"
+
+[storage]
+data_dir = ".local"
+sqlite_file = ".local/bridge.sqlite3"
+log_dir = ".local/logs"
+
+[policy]
+allow_arbitrary_paths = false
+allow_arbitrary_commands = false
+allow_model_calls = false
+require_clean_workspace = true
+max_file_bytes = 1048576
+max_result_bytes = 262144
+mutation_lock = "per-project"
+approval_ttl_seconds = 300
+
+[network]
+model_egress = "deny"
+remote_transport = "provider-selected"
+
+[codemcp]
+release = "0.3.0"
+commit = "683e6ec29b15b91ec12430afabf5a45ed57d2489"
+adapter_mode = "native-stdio"
+worker_mode = "local"
+wsl_distribution = "Ubuntu"
+wsl_python = ""
+startup_timeout_seconds = 30
+worker_timeout_seconds = 60
+shutdown_timeout_seconds = 5

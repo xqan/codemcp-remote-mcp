@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Core checks (${{ matrix.os }}, Python 3.12)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: bridge/uv.lock
+
+      - name: Sync locked dependencies
+        run: uv sync --project bridge --frozen --all-groups
+
+      - name: Lint
+        run: uv run --project bridge --frozen ruff check bridge/src bridge/tests tests/integration scripts/dependency_license_audit.py
+
+      - name: Format check
+        run: uv run --project bridge --frozen ruff format --check bridge/src bridge/tests tests/integration scripts/dependency_license_audit.py
+
+      - name: Test
+        run: uv run --project bridge --frozen pytest -q --basetemp=.local/pytest-ci bridge/tests tests/integration
+
+      - name: Whitespace check
+        run: git diff --check
+
+  security:
+    name: Open-source security gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Audit locked Python dependencies
+        run: uv audit --project bridge --frozen
+
+      - name: Inventory dependency license evidence
+        run: uv run --project bridge --frozen python scripts/dependency_license_audit.py --lock bridge/uv.lock --output "$RUNNER_TEMP/dependency-licenses.json"
+
+      - name: Install pinned Gitleaks
+        shell: bash
+        env:
+          GITLEAKS_VERSION: "8.30.0"
+          GITLEAKS_SHA256: "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -sSfL -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" version
+
+      - name: Scan current tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_tree="$RUNNER_TEMP/codemcp-current-tree"
+          mkdir -p "$current_tree"
+          git archive HEAD | tar -x -C "$current_tree"
+          "$RUNNER_TEMP/gitleaks" dir --redact=100 --no-banner "$current_tree"
+
+      - name: Scan full Git history
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/gitleaks" git --redact=100 --no-banner --log-opts=--all .
+
+  package:
+    name: Package and configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: bridge/uv.lock
+
+      - name: Sync locked dependencies
+        run: uv sync --project bridge --frozen --all-groups
+
+      - name: Validate example configuration
+        run: uv run --project bridge --frozen codemcp-bridge-server check --bridge-config config/bridge.example.toml --projects-config config/projects.example.toml
+
+      - name: Build package
+        run: uv build --project bridge
+
+      - name: Ensure build did not modify tracked files
+        run: git diff --exit-code
+
+      - name: Whitespace check
+        run: git diff --check

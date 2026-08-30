@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codemcp-remote-bridge"
+version = "0.1.0"
+description = "Local policy and MCP bridge for ChatGPT-only remote coding workflows"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "AGPL-3.0-only"
+authors = [{ name = "Frank", email = "cloudw2023@gmail.com" }]
+dependencies = [
+    "codemcp==0.3.0",
+    "mcp>=1.13,<2",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.7,<3",
+]
+
+[project.scripts]
+codemcp-bridge = "codemcp_bridge.doctor:main"
+codemcp-bridge-server = "codemcp_bridge.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10",
+    "pytest-asyncio>=1.3,<2",
+    "ruff>=0.9,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codemcp_bridge"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

@@ -1,0 +1,38 @@
+name: Feature request
+description: Propose a capability or developer-experience improvement
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or operator problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior, including non-goals.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security impact
+      description: Does this expand filesystem, command, network, identity, Git, approval, or recovery authority?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Design-boundary acknowledgement
+      options:
+        - label: I understand that arbitrary shell/path access, automatic deploy/push/merge, and weakened fail-closed defaults are intentionally out of scope unless separately redesigned and threat-modeled.
+          required: true

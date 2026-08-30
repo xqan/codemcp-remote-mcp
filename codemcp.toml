@@ -1,0 +1,52 @@
+project_prompt = "Review for correctness, security, data consistency, compatibility, and maintainability. Prefer read-only inspection and report concrete findings with file and line references."
+
+[commands.test]
+command = [
+    "uv",
+    "run",
+    "--project",
+    "bridge",
+    "pytest",
+    "-q",
+    "bridge/tests",
+    "tests/integration",
+]
+doc = "Run the Bridge and codemcp integration test suites."
+
+[commands.format]
+command = [
+    "uv",
+    "run",
+    "--project",
+    "bridge",
+    "ruff",
+    "format",
+    "--check",
+    "bridge/src",
+    "bridge/tests",
+    "tests/integration",
+]
+doc = "Check Python formatting without modifying files."
+
+[commands.security-audit]
+command = [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-File",
+    "scripts/validate-open-source-security.ps1",
+]
+doc = "Run the fixed open-source dependency, tracked-tree, and Git-history security audit."
+
+[commands.artifact-audit]
+command = [
+    "pwsh",
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-File",
+    "scripts/validate-open-source-security.ps1",
+    "-RequireArtifact",
+]
+doc = "Run the fixed open-source security audit and require the standard v0.1.0 release artifact scan."
