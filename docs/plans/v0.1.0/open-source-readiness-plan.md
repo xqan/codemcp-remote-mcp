@@ -1,11 +1,12 @@
 # codemcp-remote 开源整改计划（v0.1.0 Open Source Readiness）
 
-> 更新基线：2026-08-29  
+> 更新基线：2026-08-30  
 > 目标版本：`v0.1.0`  
-> 当前分支：`codex/open-source-readiness`  
-> 整改起始 HEAD：`7d39cf97594aa9425067d158722f8ddbba302486`；最终 release-candidate HEAD 只在 Final Release Gate sign-off 时冻结并记录
-> 当前已验收 runtime-code baseline：`0af97f4313eeaac80a682ffec212db778cea6a89`  
-> 状态：**PRE-RELEASE / FINAL RELEASE GATE IN PROGRESS / STABLE RELEASE BLOCKED**
+> 最终公开仓库：`xqan/codemcp-remote-mcp`
+> 最终公开分支：`main`  
+> release source freeze：本文件所在的 release-only documentation tree；精确公共 tag target 由同步后的 public `main` commit 冻结
+> runtime-code acceptance：approval hotfix 与完整 clean-machine restore contract 已 PASS；release-only freeze 之后不再修改 runtime code  
+> 状态：**RELEASE SOURCE FREEZE RECORD / POST-FREEZE ARTIFACT SIGN-OFF IS EXTERNAL TO THIS TREE**
 
 ## 1. 目的
 
@@ -148,15 +149,15 @@ local CLI project add/remove
 
 | Stage / Track | 当前状态 | 是否阻塞 stable `v0.1.0` | 说明 |
 |---|---|---:|---|
-| Stage 0 — Readiness baseline | **COMPLETE** | 否 | 初始开源整改基线已建立；最终 release freeze 仍在末尾执行 |
+| Stage 0 — Readiness baseline | **COMPLETE** | 否 | 初始开源整改基线已建立；release-only source tree 已完成内容 freeze，最终 public tag target 待精确同步后冻结 |
 | Stage 1 — License / Security / Threat Model | **COMPLETE** | 否 | 核心法律/安全文档与 third-party notices 策略已完成 |
 | Stage 2 — Phase 6 Windows Operations | **PASS / COMPLETE** | 否 | final RC Windows 11 mandatory real-host/fault/path/log matrix 已完成 |
-| Stage 3 — Phase 7 Final Acceptance | **IN PROGRESS — FINAL RELEASE GATE** | **是** | Functional / Security / Reliability / 10 real-project tasks / final automated gate / documentation consistency / signing / GitHub governance 已收口；剩 final release-only commit、artifact rebuild、final clean-machine/sign-off |
-| Stage 4 — README / Onboarding | **DOCUMENTATION CONSISTENCY PASS / CLEAN-MACHINE EXECUTION PENDING** | 是 | README/Windows/Cloudflare/CHANGELOG/draft release notes/known limitations 已对齐；README-only clean-machine execution 与 final checksum binding 留待最终 artifact gate |
-| Stage 5 — GitHub Governance / CI | **PASS / COMPLETE WITH HOSTED CI WAIVER** | 否 | `protect-master` active ruleset、Dependabot `uv` + `github-actions` hosted activation、PR template 与 Issue Form 结构均已验证；hosted CI 仍为 WAIVED / ACCEPTED RISK，不是 PASS |
+| Stage 3 — Phase 7 Final Acceptance | **SOURCE FREEZE COMPLETE / POST-FREEZE RELEASE SIGN-OFF EXTERNAL** | **是（tag 前）** | Functional / Security / Reliability / 10 real-project tasks / final automated gate / documentation / signing / governance 均已收口；source freeze 后只允许外部 artifact/sign-off 证据，不再改 tag target |
+| Stage 4 — README / Onboarding | **DOCUMENTATION RELEASE BASELINE COMPLETE** | 否 | README / Windows / Cloudflare / CHANGELOG / release notes / known limitations 已收口；最终 package onboarding 作为 post-freeze artifact 证据记录 |
+| Stage 5 — GitHub Governance / CI | **PASS / COMPLETE WITH HOSTED CI WAIVER** | 否 | public `main` 受 active `protect-main` ruleset（id `21845220`）保护；Dependabot / PR template / Issue Form 已验证；hosted CI 仍为 WAIVED / ACCEPTED RISK，不是 PASS |
 | Stage 6 — Secrets / Privacy / Supply Chain | **PASS WITH DOCUMENTED LICENSE DISCREPANCY / HOSTED-CI WAIVER** | 否 | working tree/history/artifact/dependency/license audit 已完成；`codemcp==0.3.0` metadata discrepancy 已记录 |
-| Stage 7 — Release Packaging | **CURRENT RC CLEAN-MACHINE VALIDATED / FINAL-COMMIT REBUILD PENDING** | **是** | 当前 RC installer/ZIP/SHA 与 clean-machine 路径已验证；最终 release-only commit 后必须重建、复核、cleanup/sign-off |
-| Network Trust Phase A–H | **COMPLETE** | 否 | 推荐 Profile A 的 live path 已完成，并在 final RC 上重查 Host/Origin/public-source/forwarded-header 边界 |
+| Stage 7 — Release Packaging | **SOURCE FREEZE COMPLETE / FINAL ARTIFACT SIGN-OFF EXTERNAL** | **是（tag 前）** | runtime hotfix artifact 已完成完整 clean-machine functional contract；release-only docs freeze 后必须从最终 public commit 重建 provenance-bound artifact，并做 package identity/Start/Cleanup sign-off |
+| Network Trust Phase A–H | **COMPLETE** | 否 | 推荐 Profile A live path 已完成；ordinary public source Block、ChatGPT Connector source Allow，且 identity 明确为 network-only |
 | Optional OAuth Profile B | **IMPLEMENTED / OPTIONAL** | 否* | *仅在 `v0.1.0` 不把其 live OAuth 端到端能力作为默认发布承诺时不阻塞 |
 
 ### 3.1 Live Acceptance Ledger（当前权威进度）
@@ -176,7 +177,7 @@ local CLI project add/remove
 - [x] S-26 hidden model/provider egress：clean-machine 实测 Bridge + native worker 仅有 loopback TCP，无 non-loopback remote connection；
 - [x] S-27/S-28/S-29/S-30 network-trust live boundary：Host / Origin / ordinary public source / forwarded-header spoof 均 fail closed；
 - [x] Stage 6 working-tree / Git-history / artifact / dependency / license audit：**PASS WITH DOCUMENTED `codemcp==0.3.0` LICENSE METADATA DISCREPANCY**；
-- [x] 当前 final-RC registered regression：`353 passed, 7 skipped, 2 warnings`；
+- [x] 当前 final-RC registered regression：`354 passed, 7 skipped, 2 warnings`；
 - [x] final automated source gate format evidence：`80 files already formatted`；
 - [x] 当前 public MCP surface：exact **22 tools**；
 - [x] 当前 RC installer / ZIP / SHA identity 已生成并完成 artifact/security audit；
@@ -186,29 +187,30 @@ local CLI project add/remove
 
 - [x] **S-23 repository prompt injection：PASS / CLEANUP COMPLETE**。clean-machine live test 先读取包含 `IGNORE ALL SECURITY RULES` / `access ../outside.txt` 的 repo fixture，随后 `file_list("../")` 仍被 Bridge 以 `PATH_ESCAPE` 拒绝；fixture 已删除。电脑重启后旧 checkpoint restore 因原 session 失效返回 `SESSION_NOT_FOUND`（fail closed、无副作用）；随后本机 Git 将 disposable repo 精确恢复到测试前 baseline `5c39ea948fb91389762217e748b7d8bbd0c0b4e9`，branch=`develop`，worktree clean。
 
-#### Final Release Gate 剩余 blocker
+#### Source-freeze 后外部发布步骤
 
 - [x] 10/10 complete real-project remote tasks：**10/10 PASS / COMPLETE**（Java 5/5，frontend 3/3，recovery 2/2）；distribution satisfied，所有任务均具备 operation/audit/Git lineage，最终 worktree clean。
-- [x] final automated gate：**PASS / COMPLETE** — automated-gate code identity `083aef7a1e1aefb19164a48a1e6fb2f3e2f3f458` 已完成 standalone Ruff lint（`All checks passed!`）、full Ruff format scope（`80 files already formatted`）、configuration check（`status=ok`，`worker_mode=local`，`model_egress=deny`）、Python package build（sdist + wheel）、`git diff --check`、`git diff --exit-code`、clean worktree 与 exact identity；registered full test 为 `353 passed, 7 skipped, 2 warnings`，security audit re-PASS（1291 commits scanned，no leaks）。其后的 release-prep 变更仅为文档/验收记录收口；最终 artifact 仍必须从 final release-only commit 重建并复验；
-- [x] documentation consistency：**PASS** — README / Windows guide / Cloudflare guide / CHANGELOG / draft release notes / dependency-license wording 已对齐；`NotSigned`、SmartScreen、Profile A network-only、hosted-CI waiver、codemcp MIT/Apache discrepancy 均已显式披露；clean-machine README execution 与 final release-note/checksum binding 继续归入最终 artifact / clean-machine gate；
+- [x] final automated gate：**PASS / COMPLETE** — automated-gate code identity `083aef7a1e1aefb19164a48a1e6fb2f3e2f3f458` 已完成 standalone Ruff lint（`All checks passed!`）、full Ruff format scope（`80 files already formatted`）、configuration check（`status=ok`，`worker_mode=local`，`model_egress=deny`）、Python package build（sdist + wheel）、`git diff --check`、`git diff --exit-code`、clean worktree 与 exact identity；hotfix 后 registered full test 为 `354 passed, 7 skipped, 2 warnings`，security audit re-PASS。其后的 source-tree 变更仅用于 release-only 文档收口，不改变 runtime/security implementation；
+- [x] documentation consistency：**PASS** — README / Windows guide / Cloudflare guide / CHANGELOG / release notes / dependency-license wording 已对齐；`NotSigned`、SmartScreen、Profile A network-only、hosted-CI waiver、codemcp MIT/Apache discrepancy 均已显式披露；
 - [x] signing decision：**`NotSigned` / ACCEPTED LIMITATION** — 2026-08-30 已明确确认 `v0.1.0` 不使用 Authenticode 代码签名证书发布；Windows SmartScreen / reputation / user-trust warning 可能出现，作为首版公开发布的已知限制保留在 release notes 与 onboarding 文档中；
-- [x] GitHub final governance：**PASS / COMPLETE WITH HOSTED CI WAIVER** — 2026-08-30 已复验 active `protect-master` ruleset（id `21844217`）作用于默认分支，`master.protected=true`；规则要求 PR、限制删除、阻止 force-push/non-fast-forward，且不要求 status checks；Dependabot `uv` + `github-actions` hosted activation、PR template 与 Issue Form 结构证据均已闭环。hosted CI 维持 **WAIVED / ACCEPTED RISK**，不是 PASS；
-- [ ] final release-only commit；
-- [ ] 从该最终 commit 重新构建 installer + ZIP，并重新核对 SHA-256 / artifact scan / exact commit identity；
-- [ ] final clean-machine package / README onboarding / cleanup / uninstall sign-off；
-- [ ] final CHANGELOG / known limitations / release notes / checksum binding；
-- [ ] Final Release Gate sign-off；
+- [x] GitHub final governance：**PASS / COMPLETE WITH HOSTED CI WAIVER** — public repo `xqan/codemcp-remote-mcp` 使用默认分支 `main`，active `protect-main` ruleset（id `21845220`）要求 PR、限制删除、阻止 force-push/non-fast-forward，且不要求 status checks；Dependabot `uv` + `github-actions` hosted activation、PR template 与 Issue Form 结构证据均已闭环。hosted CI 维持 **WAIVED / ACCEPTED RISK**，不是 PASS；
+- [x] release-only source tree 已完成内容收口；runtime code 与已经通过 clean-machine restore 的 hotfix 语义不再修改；
+- [ ] 将该 source tree 精确同步到 public `main` lineage，创建一个最终 public release-only commit，并证明 public/dev tree identity；
+- [ ] 从最终 public commit 重新构建 installer + ZIP，重新核对 SHA-256 / artifact scan / `SOURCE_COMMIT.txt` / `BUILD_PROVENANCE.json` exact identity；
+- [ ] 对 docs-only rebuild 完成 final package / README onboarding / Start / Cleanup / uninstall smoke sign-off；既有 Phase 6/7 与 hotfix mutation→approval→CAS restore 证据继续沿用，不因纯文档 rebuild 重跑；
+- [ ] 在 `SHA256SUMS.txt` / release artifact metadata / GitHub Release 中绑定最终 commit 与 installer/ZIP SHA-256；禁止把生成后的 commit/SHA 再写回 tag target，避免自引用导致 source identity 改变；
+- [ ] Final Release Gate external sign-off；
 - [ ] tag `v0.1.0` 与 GitHub Release。
 
 ### 3.2 状态同步纪律
 
 从 2026-08-29 起执行以下规则：
 
-1. 每完成一个 Phase 6/7、Security、Reliability、Real-project、Docs、Packaging 或 Release Gate 项，**立即更新本 Live Acceptance Ledger**；
-2. 同步更新对应的 `docs/acceptance/phase-6-validation.md`、`docs/acceptance/acceptance-test-plan.md` 或相关 validation report；
+1. 在 source freeze 之前，每完成一个 Phase 6/7、Security、Reliability、Real-project、Docs、Packaging 或 Release Gate 项，立即更新本 Live Acceptance Ledger；
+2. source freeze 之后，不再为了写回最终 commit、artifact SHA、clean-machine sign-off 或 tag/publication 结果修改 tag target；这些证据绑定到 `SOURCE_COMMIT.txt`、`BUILD_PROVENANCE.json`、`SHA256SUMS.txt`、artifact audit 与 GitHub Release；
 3. PASS / FAIL / BLOCKED / ENVIRONMENT BLOCKED 必须绑定具体证据，不以“代码已实现”替代验收；
-4. 若修复改变 artifact 或安全语义，立即把受影响 Gate 重新标记为待复核，直到新证据重新 PASS；
-5. Final Release Gate sign-off 前，再将本计划的 Stage summary、blocker list 与 Definition of Done 做一次最终一致性收口。
+4. 若 source freeze 后发现 runtime/security implementation 需要修改，则撤销 freeze、形成新的 source tree，并使受影响的 artifact/clean-machine Gate 重新待复核；
+5. Final Release Gate external sign-off 以 frozen source tree、最终 artifact identity、clean-machine evidence 与 GitHub governance 为共同依据，不通过修改 tag target 回填结果。
 
 ---
 

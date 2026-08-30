@@ -1,8 +1,8 @@
-# codemcp-remote v0.1.0 — Draft Release Notes
+# codemcp-remote v0.1.0 — Release Notes
 
-Status: **PRE-RELEASE / FINAL RELEASE GATE IN PROGRESS**
+Status: **RELEASE BASELINE / ACCEPTANCE GATES CLOSED**
 
-These notes describe the intended first public release. They must not be used as evidence that `v0.1.0` has already been tagged or published. The signing decision is frozen as `NotSigned`; the final release commit, installer/ZIP SHA-256 values, governance state, and clean-machine package sign-off are recorded only after their corresponding gates complete.
+These notes describe the first stable public release baseline. Exact release commit and artifact SHA-256 values are intentionally not self-referentially embedded in this source file. The authoritative binding is carried by `BUILD_PROVENANCE.json`, `SOURCE_COMMIT.txt`, `SHA256SUMS.txt`, the immutable `v0.1.0` tag target, and the GitHub Release metadata/assets.
 
 ## Highlights
 
@@ -22,9 +22,11 @@ These notes describe the intended first public release. They must not be used as
 - Reliability R-01 through R-14: **PASS**.
 - Security S-01 through S-33: accounted for; deterministic/live requirements are PASS except the separately documented Windows symlink privilege environment limitation.
 - Real-project remote tasks: **10/10 PASS / COMPLETE** — Java 5/5, frontend 3/3, recovery 2/2.
-- Final automated source gate: **PASS / COMPLETE** — standalone Ruff lint, Ruff format, configuration check, Python package build, `git diff --check`, tracked-diff verification, clean worktree/exact identity; registered regression remains `353 passed, 7 skipped, 2 warnings`.
+- Final automated source gate: **PASS / COMPLETE** — standalone Ruff lint, Ruff format, configuration check, Python package build, `git diff --check`, tracked-diff verification, clean worktree/exact identity; final registered regression is `354 passed, 7 skipped, 2 warnings`, with `80 files already formatted`.
 - Security audit: dependency audit, dependency-license evidence, current tracked-tree secret scan, and all-ref Git-history scan PASS. The codemcp 0.3.0 MIT/Apache metadata discrepancy remains explicitly documented and accepted by the engineering compatibility review.
-- GitHub governance: **PASS / COMPLETE with hosted CI WAIVED / ACCEPTED RISK** — active `protect-master` ruleset protects the default branch, Dependabot hosted activation is proven for both configured ecosystems, and PR/Issue template structure is verified; no required CI check is configured.
+- GitHub governance: **PASS / COMPLETE with hosted CI WAIVED / ACCEPTED RISK** — the public repository uses default branch `main` with active `protect-main` rules, PR-based protection, deletion/non-fast-forward protection, and no required hosted status checks.
+- Network Trust Phase A–H: **PASS / COMPLETE** — ordinary public source traffic is blocked by Cloudflare policy, ChatGPT Connector source traffic is allowed, and Profile A remains explicitly `network-only`.
+- Final hotfix clean-machine contract: **PASS** — packaged `APPROVAL_REQUIRED` handling, explicit `approval_confirm`, CAS checkpoint restore to the original baseline, clean worktree recovery, temporary mutation removal, and final Cleanup/uninstall all completed successfully.
 
 ## Known limitations and accepted risks
 
@@ -32,21 +34,21 @@ These notes describe the intended first public release. They must not be used as
 - Profile A cannot identify a human user, ChatGPT account, Workspace, or conversation.
 - This first release is single-operator local policy infrastructure, not a multi-user RBAC system.
 - Automatic push, merge, rebase, deploy, arbitrary shell, arbitrary filesystem access, and model calls inside the Bridge are intentionally unavailable.
-- `v0.1.0` is intentionally **`NotSigned`**. No Authenticode code-signing certificate will be used for this release. Windows SmartScreen or reputation/user-trust warnings may appear; this is an explicitly accepted and published limitation for the first stable release.
+- `v0.1.0` is intentionally **`NotSigned`**. No Authenticode code-signing certificate is used for this release. Windows SmartScreen or reputation/user-trust warnings may appear; this is an explicitly accepted and published limitation.
 - GitHub-hosted CI did not execute because of the recorded billing/spending-limit blocker. This is **WAIVED / ACCEPTED RISK**, not a CI PASS.
 - `codemcp==0.3.0` has a documented upstream license metadata discrepancy: distribution metadata reports MIT while the bundled audited `License-File` is Apache-2.0. Both facts and the bundled license evidence are preserved.
 
-## Final-release fields still pending
+## Release identity and publication binding
 
-The following values are intentionally not frozen in this draft:
+The release source is the final public `main` commit created from this release-only documentation freeze. After that immutable source commit is selected:
 
-- final release-only Git commit;
-- final installer SHA-256;
-- final Windows ZIP SHA-256;
-- final clean-machine installer/ZIP/cleanup/uninstall sign-off;
-- tag `v0.1.0` and GitHub Release publication.
+1. rebuild the installer and Windows ZIP from that exact public commit;
+2. require `SOURCE_COMMIT.txt` and `BUILD_PROVENANCE.json` to report the exact tag target;
+3. verify installer/ZIP SHA-256 and final artifact/security audit;
+4. complete final clean-machine package identity, README onboarding, Start/health, Cleanup/uninstall sign-off;
+5. publish tag `v0.1.0` and the GitHub Release with the installer, ZIP, checksum evidence, and these release notes.
 
-After the release-only commit is created, rebuild the installer and ZIP from that exact commit, rerun artifact/security identity checks, complete clean-machine sign-off, then replace this section with the final immutable release identity before tagging.
+Because the release commit and artifact hashes are outputs of the freeze/build process, they are recorded in release provenance and publication metadata rather than written back into this source file after the freeze.
 
 ## Documentation
 
@@ -54,5 +56,5 @@ After the release-only commit is created, rebuild the installer and ZIP from tha
 - `docs/guides/windows-build-install-use.md` — Windows build/install/use flow.
 - `docs/guides/cloudflare-tunnel-setup.md` — recommended Profile A network-trust deployment.
 - `docs/acceptance/acceptance-test-plan.md` — Phase 7 acceptance record.
-- `docs/plans/v0.1.0/open-source-readiness-plan.md` — live release-gate ledger.
+- `docs/plans/v0.1.0/open-source-readiness-plan.md` — release-gate requirements and source-freeze ledger.
 - `docs/reports/testing/v0.1.0-dependency-license-compatibility-signoff.md` — dependency/license review.
