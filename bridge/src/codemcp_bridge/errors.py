@@ -53,7 +53,7 @@ class BridgeError(Exception):
     def __post_init__(self) -> None:
         if self.code not in ERROR_CODES:
             raise ValueError(f"unknown Bridge error code: {self.code}")
-        super().__init__(self.message)
+        Exception.__init__(self, self.message)
 
     def as_payload(self) -> dict[str, Any]:
         return {
