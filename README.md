@@ -15,7 +15,7 @@ ChatGPT
   -> registered local Git project
 ```
 
-> **Pre-release:** the Cloudflare No-Auth network-trust path has completed Phase A–H live acceptance and is usable for controlled private operation. Stable public `v0.1.0` release remains blocked on the broader Phase 7 release gates in [`docs/acceptance/acceptance-test-plan.md`](docs/acceptance/acceptance-test-plan.md).
+> **v0.1.0 release baseline:** product/runtime acceptance gates are closed for the first stable release. The release is intentionally `NotSigned`; GitHub-hosted CI remains `WAIVED / ACCEPTED RISK`. Exact release commit and artifact SHA-256 values are bound by build provenance, `SOURCE_COMMIT.txt`, `SHA256SUMS.txt`, and the GitHub Release rather than being self-referentially embedded in this source file.
 
 Browse the [documentation center](docs/README.md) for current architecture,
 operator guides, release gates, plans, and historical validation records.

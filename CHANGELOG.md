@@ -2,9 +2,11 @@
 
 All notable public changes to codemcp-remote will be documented here.
 
-The project is currently pre-release. Version `v0.1.0` must not be published until the release gates in `docs/acceptance/acceptance-test-plan.md` and `docs/plans/v0.1.0/open-source-readiness-plan.md` pass.
-
 ## [Unreleased]
+
+No entries yet.
+
+## [0.1.0] - 2026-08-30
 
 ### Added
 
@@ -25,7 +27,7 @@ The project is currently pre-release. Version `v0.1.0` must not be published unt
 ### Changed
 
 - Package metadata now identifies the project license as AGPL-3.0-only.
-- README status is explicitly pre-release and separates completed private network-trust acceptance from the broader stable release gates.
+- README status now reflects the stable `v0.1.0` release baseline while preserving the distinction between Cloudflare network trust, product acceptance evidence, and external artifact/publication binding.
 - Current implementation, architecture, operations, Phase 6/7 acceptance, dependency-baseline, security, and threat-model documentation now consistently use the packaged Native Windows + Cloudflare Profile A path as the default `v0.1.0` baseline; WSL2, Secure MCP Tunnel, and OAuth Profile B are explicitly compatibility/optional paths.
 - A packaged `codemcp-remote.exe` launched without a command now starts the managed lifecycle.
 - The packaged EXE directory is the default runtime home unless `--home` or `CODEMCP_HOME` overrides it.
@@ -40,9 +42,9 @@ The project is currently pre-release. Version `v0.1.0` must not be published unt
 - Profile A is a `network-only` trust boundary and does not identify a ChatGPT user, account, Workspace, or conversation.
 - The Bridge is single-operator local policy infrastructure, not a multi-user authorization service.
 - Arbitrary shell, automatic push/merge/deploy, and model calls inside the Bridge are intentionally unavailable.
-- The current Windows release candidate is `NotSigned`; Windows SmartScreen or other reputation warnings may appear. Stable release requires either a signed artifact or an explicit release decision accepting and documenting this limitation.
+- `v0.1.0` is intentionally **`NotSigned`**. No Authenticode certificate is used; Windows SmartScreen or other reputation warnings may appear. This is an accepted and documented limitation.
 - GitHub-hosted CI did not execute because of the recorded billing/spending-limit blocker. The v0.1.0 gate records this as **WAIVED / ACCEPTED RISK**, not PASS; local deterministic gates remain the release evidence.
-- Installer/ZIP hashes and the release commit are not final until the release-only commit is created and the artifacts are rebuilt from that exact commit.
+- Exact release commit and installer/ZIP SHA-256 values are bound by `BUILD_PROVENANCE.json`, `SOURCE_COMMIT.txt`, `SHA256SUMS.txt`, and the GitHub Release. They are not self-referentially embedded in this changelog.
 
 ## Release policy
 
