@@ -12,7 +12,7 @@ license = "AGPL-3.0-only"
 authors = [{ name = "Frank", email = "cloudw2023@gmail.com" }]
 dependencies = [
     "codemcp==0.3.0",
-    "mcp>=1.13,<2",
+    "mcp>=1.13,<3",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.7,<3",
     "keyring>=25.7,<26; sys_platform == 'darwin'",
