@@ -1,0 +1,273 @@
+name: macOS Release Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - codex/macos-cli-packaging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.12.10"
+  UV_VERSION: "0.12.7"
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            label: macos-arm64
+          - runner: macos-15-intel
+            arch: x86_64
+            label: macos-intel64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout full source history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pinned Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up pinned uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+
+      - name: Verify native runner identity
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = "Darwin"
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          printf 'runner.os=%s\n' "$RUNNER_OS"
+          printf 'runner.arch=%s\n' "$RUNNER_ARCH"
+          uname -a
+          sw_vers
+          python3.12 --version
+          uv --version
+          xcode-select -p
+
+      - name: Build deterministic candidate
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          bash ./scripts/build-macos-release.sh \
+            --version 0.1.0 \
+            --arch "$EXPECTED_ARCH" \
+            --mode candidate
+
+      - name: Validate archive, Mach-O signing, and Gatekeeper limitation
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          ARTIFACT_LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          archive=".local/dist/codemcp-remote-v0.1.0-${ARTIFACT_LABEL}.tar.gz"
+          evidence=".local/dist/${ARTIFACT_LABEL}-validation.json"
+          bash ./scripts/validate-macos-release.sh \
+            --archive "$archive" \
+            --arch "$EXPECTED_ARCH" \
+            --label "$ARTIFACT_LABEL" \
+            --source-commit "$GITHUB_SHA" \
+            --evidence "$evidence" \
+            --expect-spctl-rejection
+
+      - name: Run frozen executable host acceptance
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          ARTIFACT_LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          extract_dir="$RUNNER_TEMP/codemcp-${ARTIFACT_LABEL}"
+          rm -rf "$extract_dir"
+          mkdir -p "$extract_dir"
+          tar -xzf ".local/dist/codemcp-remote-v0.1.0-${ARTIFACT_LABEL}.tar.gz" -C "$extract_dir"
+          CODEMCP_RUN_MACOS_PACKAGING_ACCEPTANCE=1 \
+          CODEMCP_MACOS_CANDIDATE="$extract_dir/codemcp-remote" \
+          CODEMCP_EXPECTED_MACOS_ARCH="$EXPECTED_ARCH" \
+            uv run --project bridge --frozen pytest -q \
+              tests/integration/test_macos_executable_host.py
+
+      - name: Ensure build did not modify tracked source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --porcelain --untracked-files=no)"
+
+      - name: Upload immutable candidate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-candidate-${{ matrix.label }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            .local/dist/codemcp-remote-v0.1.0-${{ matrix.label }}.tar.gz
+            .local/dist/codemcp-remote-v0.1.0-${{ matrix.label }}.tar.gz.sha256
+            .local/dist/${{ matrix.label }}-validation.json
+
+  converge:
+    name: Converge macOS candidates
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download both candidate artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: macos-candidate-*
+          path: .local/convergence
+
+      - name: Verify cross-architecture convergence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" <<'PY'
+          import hashlib
+          import json
+          import sys
+          import tarfile
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          source_commit, run_id, run_attempt = sys.argv[1:]
+          root = Path(".local/convergence")
+          expected = {
+              "macos-arm64": ("arm64", "codemcp-remote-v0.1.0-macos-arm64.tar.gz"),
+              "macos-intel64": ("x86_64", "codemcp-remote-v0.1.0-macos-intel64.tar.gz"),
+          }
+          records = {}
+
+          for label, (arch, filename) in expected.items():
+              matches = list(root.rglob(filename))
+              if len(matches) != 1:
+                  raise SystemExit(f"expected exactly one {filename}, found {len(matches)}")
+              archive = matches[0]
+              sidecar = archive.with_name(archive.name + ".sha256")
+              evidence_path = archive.with_name(f"{label}-validation.json")
+              if not sidecar.is_file() or not evidence_path.is_file():
+                  raise SystemExit(f"missing digest/evidence for {label}")
+
+              digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+              sidecar_parts = sidecar.read_text(encoding="ascii").strip().split()
+              if sidecar_parts != [digest, filename]:
+                  raise SystemExit(f"archive digest sidecar mismatch for {label}")
+
+              evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+              if evidence["archive_sha256"] != digest:
+                  raise SystemExit(f"validation digest mismatch for {label}")
+              if evidence["source_commit"] != source_commit:
+                  raise SystemExit(f"validation source mismatch for {label}")
+              if evidence["target_arch"] != arch:
+                  raise SystemExit(f"validation arch mismatch for {label}")
+
+              with tarfile.open(archive, "r:gz") as candidate:
+                  member = candidate.getmember("codemcp-remote/BUILD_PROVENANCE.json")
+                  provenance = json.load(candidate.extractfile(member))
+
+              if provenance["source"]["git_commit"] != source_commit:
+                  raise SystemExit(f"provenance source mismatch for {label}")
+              if provenance["target_arch"] != arch:
+                  raise SystemExit(f"provenance arch mismatch for {label}")
+              if provenance["release_version"] != "0.1.0":
+                  raise SystemExit(f"release version mismatch for {label}")
+              records[label] = {
+                  "archive": filename,
+                  "archive_sha256": digest,
+                  "evidence": evidence,
+                  "provenance": provenance,
+              }
+
+          arm = records["macos-arm64"]["provenance"]
+          intel = records["macos-intel64"]["provenance"]
+          common_pairs = (
+              ("schema", arm["schema"], intel["schema"]),
+              ("release_version", arm["release_version"], intel["release_version"]),
+              ("source", arm["source"], intel["source"]),
+              ("tools", arm["tools"], intel["tools"]),
+              ("bridge_lock_sha256", arm["bridge_lock_sha256"], intel["bridge_lock_sha256"]),
+              ("signing", arm["signing"], intel["signing"]),
+              ("notarization", arm["notarization"], intel["notarization"]),
+          )
+          for name, left, right in common_pairs:
+              if left != right:
+                  raise SystemExit(f"cross-architecture provenance mismatch: {name}")
+
+          if arm["schema"] != "codemcp-remote-build-provenance-v2":
+              raise SystemExit("unexpected provenance schema")
+          if arm["signing"]["mode"] != "adhoc" or arm["signing"]["developer_id"] is not False:
+              raise SystemExit("candidate signing contract mismatch")
+          if arm["notarization"]["status"] != "not_performed":
+              raise SystemExit("candidate must not claim notarization")
+          if arm["notarization"]["reason"] != "no_certificate":
+              raise SystemExit("unexpected notarization reason")
+
+          output = {
+              "schema": "codemcp-remote-macos-convergence-v1",
+              "source_commit": source_commit,
+              "release_version": "0.1.0",
+              "workflow_run_id": run_id,
+              "workflow_run_attempt": run_attempt,
+              "authoritative_builder": "github-actions-native-macos",
+              "candidates": {
+                  label: {
+                      "archive": record["archive"],
+                      "archive_sha256": record["archive_sha256"],
+                      "target_arch": record["provenance"]["target_arch"],
+                      "runner": record["evidence"]["runner"],
+                  }
+                  for label, record in records.items()
+              },
+              "common": {
+                  "provenance_schema": arm["schema"],
+                  "tools": arm["tools"],
+                  "bridge_lock_sha256": arm["bridge_lock_sha256"],
+                  "signing": arm["signing"],
+                  "notarization": arm["notarization"],
+              },
+              "converged_at": datetime.now(timezone.utc).isoformat(),
+          }
+          destination = Path(".local/convergence/macos-v0.1.0-convergence.json")
+          destination.write_text(
+              json.dumps(output, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(destination.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload convergence evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-candidate-convergence
+          if-no-files-found: error
+          retention-days: 14
+          path: .local/convergence/macos-v0.1.0-convergence.json

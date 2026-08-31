@@ -44,13 +44,70 @@ jobs:
         run: uv sync --project bridge --frozen --all-groups
 
       - name: Lint
-        run: uv run --project bridge --frozen ruff check bridge/src bridge/tests tests/integration scripts/dependency_license_audit.py
+        run: uv run --project bridge --frozen ruff check bridge/src bridge/tests tests/integration scripts/dependency_license_audit.py scripts/prepare-verified-release-asset.py
 
       - name: Format check
-        run: uv run --project bridge --frozen ruff format --check bridge/src bridge/tests tests/integration scripts/dependency_license_audit.py
+        run: uv run --project bridge --frozen ruff format --check bridge/src bridge/tests tests/integration scripts/dependency_license_audit.py scripts/prepare-verified-release-asset.py
 
       - name: Test
         run: uv run --project bridge --frozen pytest -q --basetemp=.local/pytest-ci bridge/tests tests/integration
+
+      - name: Whitespace check
+        run: git diff --check
+
+  macos-source:
+    name: macOS source runtime (arm64, Python 3.12)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.10"
+
+      - name: Set up pinned uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.7"
+          enable-cache: false
+
+      - name: Verify native Apple Silicon runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = "Darwin"
+          test "$(uname -m)" = "arm64"
+          sw_vers
+          python3.12 --version
+          uv --version
+
+      - name: Sync locked dependencies
+        run: uv sync --project bridge --frozen --all-groups --python 3.12
+
+      - name: Verify macOS Keychain backend is importable
+        run: >-
+          uv run --project bridge --frozen python -c
+          "from keyring.backends.macOS import Keyring; print(type(Keyring()).__name__)"
+
+      - name: Validate source-mode configuration
+        run: >-
+          uv run --project bridge --frozen codemcp-bridge-server check
+          --bridge-config config/bridge.example.toml
+          --projects-config config/projects.example.toml
+
+      - name: Test macOS runtime and packaging contracts
+        run: >-
+          uv run --project bridge --frozen pytest -q
+          bridge/tests/test_executable_entrypoint.py
+          bridge/tests/test_phase1_macos_runtime_security.py
+          bridge/tests/test_phase3_lifecycle.py
+          bridge/tests/test_phase55_cloudflare_transport.py
+          bridge/tests/test_macos_packaging.py
 
       - name: Whitespace check
         run: git diff --check

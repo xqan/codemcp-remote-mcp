@@ -510,3 +510,147 @@ def test_rotate_log_keeps_bounded_backups(
     assert log.with_name(f"{log.name}.1").read_text(encoding="utf-8") == "current"
     assert log.with_name(f"{log.name}.2").read_text(encoding="utf-8") == "one"
     assert log.with_name(f"{log.name}.3").read_text(encoding="utf-8") == "two"
+
+
+def test_posix_background_process_starts_new_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured.update(kwargs)
+        return SimpleNamespace(pid=123)
+
+    monkeypatch.setattr(lifecycle.os, "name", "posix")
+    monkeypatch.setattr(lifecycle.subprocess, "Popen", fake_popen)
+
+    lifecycle._popen_background(
+        ["python", "-m", "worker"],
+        cwd=tmp_path,
+        log_path=tmp_path / "worker.log",
+        env={},
+    )
+
+    assert captured["start_new_session"] is True
+    assert "creationflags" not in captured
+
+
+def test_darwin_process_marker_uses_stable_c_locale_start_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(args, **kwargs):
+        captured["args"] = args
+        captured["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="Sun Aug 30 11:22:33 2026\n")
+
+    monkeypatch.setattr(lifecycle.os, "name", "posix")
+    monkeypatch.setattr(lifecycle.sys, "platform", "darwin")
+    monkeypatch.setattr(lifecycle.subprocess, "run", fake_run)
+
+    marker = lifecycle._process_marker(123)
+
+    assert marker == "darwin-lstart:Sun Aug 30 11:22:33 2026"
+    assert captured["args"] == ["ps", "-p", "123", "-o", "lstart="]
+    assert captured["env"]["LC_ALL"] == "C"
+
+
+def test_posix_process_state_records_group_marker_and_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state: dict[str, object] = {"version": 2}
+    monkeypatch.setattr(lifecycle.os, "name", "posix")
+    monkeypatch.setattr(lifecycle.os, "getpgrp", lambda: 999, raising=False)
+    monkeypatch.setattr(lifecycle, "_process_marker", lambda pid: f"marker-{pid}")
+    monkeypatch.setattr(lifecycle, "_process_group_id", lambda pid: 777)
+    monkeypatch.setattr(lifecycle, "_process_executable_identity", lambda pid: "/usr/bin/python3")
+
+    lifecycle._capture_process_state(state, "bridge", 123)
+
+    assert state["bridge_pid"] == 123
+    assert state["bridge_pgid"] == 777
+    assert state["bridge_process_marker"] == "marker-123"
+    assert state["bridge_executable_identity"] == "/usr/bin/python3"
+
+
+def test_posix_ownership_rejects_old_or_foreign_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = {
+        "version": 2,
+        "bridge_pid": 123,
+        "bridge_pgid": 777,
+        "bridge_process_marker": "marker-123",
+        "bridge_executable_identity": "/usr/bin/python3",
+    }
+    monkeypatch.setattr(lifecycle.os, "name", "posix")
+    monkeypatch.setattr(lifecycle.os, "getpgrp", lambda: 999, raising=False)
+    monkeypatch.setattr(lifecycle, "_matches_process_marker", lambda pid, marker: True)
+    monkeypatch.setattr(lifecycle, "_process_group_id", lambda pid: 777)
+    monkeypatch.setattr(lifecycle, "_process_executable_identity", lambda pid: "/usr/bin/python3")
+
+    assert lifecycle._state_process_owned(base, "bridge") is True
+    assert lifecycle._state_process_owned({**base, "version": 1}, "bridge") is False
+    assert lifecycle._state_process_owned({**base, "version": "invalid"}, "bridge") is False
+    assert lifecycle._state_process_owned({**base, "bridge_pgid": 1}, "bridge") is False
+    assert lifecycle._state_process_owned({**base, "bridge_pgid": 999}, "bridge") is False
+
+    monkeypatch.setattr(lifecycle, "_process_group_id", lambda pid: 778)
+    assert lifecycle._state_process_owned(base, "bridge") is False
+
+    monkeypatch.setattr(lifecycle, "_process_group_id", lambda pid: 777)
+    monkeypatch.setattr(lifecycle, "_matches_process_marker", lambda pid, marker: False)
+    assert lifecycle._state_process_owned(base, "bridge") is False
+
+    monkeypatch.setattr(lifecycle, "_matches_process_marker", lambda pid, marker: True)
+    monkeypatch.setattr(lifecycle, "_process_executable_identity", lambda pid: "/usr/bin/foreign")
+    assert lifecycle._state_process_owned(base, "bridge") is False
+
+
+def test_posix_termination_signals_owned_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {"bridge_pid": 123, "bridge_pgid": 777}
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(lifecycle.os, "name", "posix")
+    monkeypatch.setattr(lifecycle, "_state_process_owned", lambda current, category: True)
+    monkeypatch.setattr(
+        lifecycle.os,
+        "killpg",
+        lambda pgid, sent_signal: signals.append((pgid, sent_signal)),
+        raising=False,
+    )
+
+    assert lifecycle._terminate_state_process(state, "bridge", timeout_seconds=0) is True
+
+    assert signals == [
+        (777, lifecycle._POSIX_SIGTERM),
+        (777, lifecycle._POSIX_SIGKILL),
+    ]
+
+
+def test_posix_termination_rechecks_ownership_before_sigkill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {"bridge_pid": 123, "bridge_pgid": 777}
+    ownership = iter([True, True, False])
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(lifecycle.os, "name", "posix")
+    monkeypatch.setattr(
+        lifecycle,
+        "_state_process_owned",
+        lambda current, category: next(ownership),
+    )
+    monkeypatch.setattr(
+        lifecycle.os,
+        "killpg",
+        lambda pgid, sent_signal: signals.append((pgid, sent_signal)),
+        raising=False,
+    )
+
+    assert lifecycle._terminate_state_process(state, "bridge", timeout_seconds=0) is True
+
+    assert signals == [(777, lifecycle._POSIX_SIGTERM)]

@@ -1,407 +1,323 @@
-# codemcp-remote v0.1.0 Current Implementation Plan
+# codemcp-remote v0.1.0 macOS Dual-Architecture CLI Implementation Plan
 
-> Updated: 2026-08-28  
-> Release target: `v0.1.0`  
-> Status: **PRE-RELEASE / RELEASE GATES IN PROGRESS**  
-> Open-source release plan: [`plans/v0.1.0/open-source-readiness-plan.md`](plans/v0.1.0/open-source-readiness-plan.md)
+[Simplified Chinese](zh-CN/implementation-plan.md)
 
-## 1. Goal
+> Updated: 2026-08-31  
+> Implementation branch: `codex/macos-cli-packaging`  
+> Status: **PHASE 1 COMPLETED / PHASE 2 COMPLETED / PHASE 3 GITHUB NATIVE GATE PASS / PHASE 4 INTEL64 LIVE GATE PASS / ARM64 REAL-HOST GATE PENDING / RELEASE BLOCKED**  
+> Previous frozen baseline: [`plans/v0.1.0/windows-release-baseline-2026-08-28.md`](plans/v0.1.0/windows-release-baseline-2026-08-28.md)
 
-codemcp-remote is a policy-controlled local MCP bridge that lets **ChatGPT remain the only reasoning engine** while operating on explicitly registered local Git repositories.
+This plan is the English canonical implementation record for the additive macOS dual-architecture work. Intel64 live acceptance is complete, but macOS support and the combined `v0.1.0` release remain blocked until the required Apple Silicon real-host gate is complete.
 
-The installed Windows product must provide a bounded execution surface instead of arbitrary remote shell access:
+## Goal
 
-- ChatGPT decides what to read, search, edit, test, inspect, restore, or reconcile;
-- the Bridge validates authorization, paths, commands, operation identity, approvals, audit and Git safety;
-- codemcp is an execution backend, not a second reasoning agent;
-- remote transports publish only the Bridge;
-- the Bridge never grants access to an arbitrary local path or caller-supplied shell command.
-
-Stable `v0.1.0` is not approved until the mandatory Phase 6/7, supply-chain, clean-machine packaging and hosted CI gates are complete.
-
-## 2. Current Product Baseline
-
-### 2.1 Installed Windows runtime
-
-The `v0.1.0` installed product targets:
-
-- Windows 11 x64-compatible;
-- packaged `codemcp-remote.exe`;
-- `codemcp-remote-setup.exe`;
-- Git for Windows as an explicit runtime prerequisite;
-- Native Windows local codemcp worker as the default worker;
-- bundled `cloudflared`;
-- optional bundled OpenAI `tunnel-client`;
-- no Python, `uv`, PowerShell 7 or WSL2 requirement for normal installed runtime use.
-
-Source development still requires Python 3.12+, `uv` and PowerShell 7.
-
-WSL2 Ubuntu remains an explicit source-mode compatibility fallback only.
-
-### 2.2 Recommended remote profile
-
-The recommended personal deployment is Profile A:
+Add two native macOS CLI release artifacts to the `v0.1.0` release family:
 
 ```text
-ChatGPT Connector
-  Authentication = No authentication
-        |
-        v
-OpenAI / ChatGPT Connector egress
-        |
-        v
-Cloudflare Edge / WAF IP allowlist
-        |
-        v
-Cloudflare Tunnel
-        |
-        v
-127.0.0.1:46200/mcp
-        |
-        v
-codemcp-remote Bridge
-        |
-        v
-Native Windows codemcp worker
-        |
-        v
-registered local Git repository
+codemcp-remote-v0.1.0-macos-arm64.tar.gz
+codemcp-remote-v0.1.0-macos-intel64.tar.gz
 ```
 
-Profile A rules:
-
-- `auth.mode = "none"`;
-- `network_trust.mode = "cloudflare-chatgpt"`;
-- canonical `allowed_hosts` must be non-empty;
-- Cloudflare WAF enforces the OpenAI/ChatGPT Connector egress allowlist;
-- the Bridge does not authorize from forwarded client-IP headers;
-- `identity_level = network-only`;
-- network trust is **not user authentication** and cannot identify a ChatGPT user, Workspace, account or conversation.
-
-Profile B remains optional:
+Each archive must contain one visible top-level directory:
 
 ```text
-auth.mode = "oauth-resource-server"
+codemcp-remote/
+├── codemcp-remote
+├── codemcp-install.sh
+├── codemcp-start.sh
+├── codemcp-stop.sh
+├── config/
+├── LICENSE
+├── THIRD_PARTY/
+├── SHA256SUMS.txt
+└── BUILD_PROVENANCE.json
 ```
 
-It is retained for deployments that require subject/client/scope identity and the existing external OAuth Resource Server contract.
-
-OpenAI Secure MCP Tunnel remains an optional compatibility transport, not the default `v0.1.0` personal deployment path.
-
-## 3. Architecture Contract
-
-### 3.1 ChatGPT is the only reasoning engine
-
-The Bridge and codemcp must not contain or invoke:
-
-- model providers;
-- LLM or embedding API clients;
-- hidden agent loops;
-- autonomous task planners;
-- natural-language-to-shell dispatch;
-- model routing.
-
-Every reasoning step that changes the next action must originate from ChatGPT through another explicit MCP call.
-
-### 3.2 Bridge is the security and lifecycle boundary
-
-The Bridge owns:
-
-- project registration lookup and authorization;
-- session lifecycle;
-- operation lifecycle;
-- canonical request hashing and idempotency;
-- project-scoped mutation serialization;
-- path containment and sensitive-path policy;
-- command-ID allowlists;
-- approvals;
-- audit;
-- output bounding and redaction;
-- Git checkpoints;
-- branch/HEAD compare-and-swap checks;
-- rollback;
-- unknown-side-effect blocking and reconciliation;
-- worker lifecycle and runtime diagnostics.
-
-The Bridge is the only MCP server exposed to a remote transport.
-
-### 3.3 codemcp is a pinned execution backend
-
-Current baseline:
-
-- upstream `codemcp==0.3.0`;
-- pinned commit `683e6ec29b15b91ec12430afabf5a45ed57d2489`;
-- upstream dependency remains unchanged;
-- Bridge-owned Windows compatibility wrapper isolates native Windows subprocess/newline behavior;
-- no permanent upstream fork is required by the current implementation.
-
-The dependency baseline is documented in [`guides/codemcp-baseline.md`](guides/codemcp-baseline.md).
-
-## 4. Public MCP Contract
-
-The current public surface contains 22 tools:
-
-1. `project_open`
-2. `project_status`
-3. `file_read`
-4. `code_search`
-5. `file_list`
-6. `file_edit`
-7. `file_create`
-8. `file_write`
-9. `file_move`
-10. `file_delete`
-11. `directory_create`
-12. `registered_command_run`
-13. `format_run`
-14. `test_run`
-15. `git_status`
-16. `git_diff`
-17. `checkpoint_create`
-18. `checkpoint_restore`
-19. `operation_status`
-20. `approval_confirm`
-21. `operation_cancel`
-22. `operation_reconcile`
-
-The public contract must continue to exclude:
-
-- arbitrary shell;
-- caller-controlled executable paths;
-- generic caller-controlled argv;
-- arbitrary host paths;
-- project registry mutation through MCP;
-- automatic push, merge, rebase or deploy.
-
-Schema changes require an explicit security and compatibility review.
-
-## 5. Project Authorization Control Plane
-
-Project registration is a **local administrative action**.
-
-Normal flow:
+The PyInstaller `onedir` runtime may additionally use one hidden internal implementation directory:
 
 ```text
-local CLI project add/remove
-  -> validate candidate registry
-  -> atomic projects.toml replacement
-  -> running Bridge detects validated generation change
-  -> authorization changes take effect without restart
+codemcp-remote/.codemcp-runtime/
 ```
 
-Rules:
+That directory is not a public configuration surface and must not contain writable runtime state, user configuration, or secrets.
 
-- MCP clients cannot add, remove, reload or reconfigure projects;
-- live reload keeps a last-known-good registry;
-- invalid registry updates fail closed;
-- in-place project-root redirection is rejected;
-- removal revokes new access and blocks affected active sessions;
-- re-adding the same project ID does not revive old sessions;
-- direct `projects.toml` editing is reserved for trusted offline maintenance or recovery.
+## Definition of done
 
-## 6. Mutation and Git Safety Model
+The macOS track is complete only when all of the following are true:
 
-A mutation requires a caller-provided `client_request_id` and canonical SHA-256 `request_hash`.
+- `macos-arm64` is a native thin `arm64` build;
+- `macos-intel64` is a native thin `x86_64` build;
+- installed execution does not require Python, `uv`, PowerShell, or Homebrew;
+- Git remains the explicit runtime prerequisite;
+- `./codemcp-install.sh` performs an interactive first-time setup through the official CLI;
+- the existing 22-tool MCP contract, security policy, Git checkpoints, CAS restore, and ChatGPT-only reasoning boundary are preserved;
+- `init`, `project`, `start`, `status`, `stop`, and `doctor` work on both architectures;
+- persistent secrets use macOS Keychain and never fall back to plaintext;
+- release artifacts are ad-hoc signed and explicitly **not notarized** because no Developer ID certificate is available;
+- provenance, checksums, third-party notices, and supply-chain inputs are auditable;
+- real Apple Silicon and real Intel clean-host acceptance is complete;
+- shared changes pass the required Windows regression gates.
 
-The operation lifecycle is explicit:
+macOS packages include only `cloudflared` as the supported packaged transport. OpenAI `tunnel-client` remains in the product as an existing optional compatibility provider but is not part of the macOS release payload or acceptance contract.
 
-```text
-received
-  -> validated
-  -> awaiting_approval (when required)
-  -> dispatched
-  -> running
-  -> succeeded | failed | cancelled | unknown
-```
+## Current verified facts
 
-Required behavior:
+The implementation is based on these repository facts:
 
-- identical request identity replays the persisted result;
-- same request ID with a different hash is rejected;
-- one project has at most one active mutation;
-- dirty-worktree policy is enforced before protected mutations;
-- a Bridge-owned checkpoint is created before mutation;
-- mutation records expected branch/HEAD and post-state evidence;
-- unexpected branch/HEAD changes fail closed;
-- rollback uses registered checkpoint refs plus CAS validation;
-- uncertain backend outcomes become `unknown`;
-- a blocked project requires explicit evidence-backed `operation_reconcile`;
-- no uncertain mutation is transparently retried.
+1. `bridge/pyproject.toml` defines the Python 3.12+ package, version `0.1.0`, and the CLI entry points.
+2. The frozen executable entry point can be shared across Windows and macOS.
+3. The lifecycle self-spawns the Bridge and transport processes.
+4. The worker path supports native POSIX execution; Windows compatibility patches are conditional.
+5. Windows uses DPAPI; macOS uses a platform-specific Keychain secret store.
+6. POSIX lifecycle ownership requires process-group and stable process-start identity checks.
+7. `cloudflared` discovery supports a packaged exact path before PATH fallback.
+8. Release builds require a clean worktree, exact source identity, pinned build tools, provenance, licenses, and SHA-256 evidence.
+9. The macOS release workflow produces native candidates on separate GitHub-hosted architectures.
+10. Existing Windows release evidence does not automatically prove the additive macOS release target.
 
-## 7. Current Completed Tracks
+## Architecture decisions
 
-The following implementation tracks are already complete or substantially complete:
+| Decision | Choice | Rationale |
+| --- | --- | --- |
+| Artifacts | Two native thin builds: `arm64` and `x86_64` | No Rosetta or cross-architecture ambiguity |
+| Freeze mode | PyInstaller `onedir` with `.codemcp-runtime` | Preserves stable self-spawn and process ownership semantics |
+| Writable home | macOS packaged default: `~/Library/Application Support/codemcp-remote` | Keeps the distribution relocatable and read-only |
+| Secret storage | Environment first, Windows DPAPI, macOS Keychain, no plaintext fallback | Fail-closed platform storage |
+| POSIX lifecycle | New session/process group plus stable start marker | Prevents PID-reuse and foreign-process termination |
+| Transport | Bundle pinned `cloudflared` only | Matches the macOS release scope |
+| Interactive setup | Shell script orchestrates the official CLI | Avoids a second TOML/config implementation |
+| Supply chain | Pin URL/version/SHA-256, validate safe extraction, preserve provenance | Reproducible and auditable release input |
+| Signing | Ad-hoc only; no notarization | Matches the no-certificate constraint truthfully |
+| Release scope | Add macOS to `v0.1.0` without changing the Windows contract | Shared changes still require Windows regression |
 
-- core Bridge policy and MCP surface;
-- SQLite session/operation/approval/audit persistence;
-- Git checkpoint and CAS rollback;
-- Native Windows worker;
-- WSL2 compatibility fallback;
-- local CLI project add/remove;
-- project registry hot reload and revocation;
-- Windows packaged EXE;
-- Windows installer;
-- release-candidate ZIP/checksum generation;
-- DPAPI runtime secret storage;
-- Cloudflare transport;
-- Profile A network trust;
-- optional Profile B OAuth Resource Server integration;
-- public README and Windows install/use guide;
-- AGPL-3.0-only licensing;
-- security policy, security model and threat model;
-- GitHub CI/governance files;
-- Cloudflare network-trust Phase A-H live acceptance.
+## Non-negotiable constraints
 
-Phase H has demonstrated the real path:
+- Exact artifact names are fixed to the two names listed above.
+- Archives contain exactly one top-level `codemcp-remote/` directory.
+- `.codemcp-runtime/` is the only hidden runtime directory allowed by the packaging contract.
+- `codemcp-install.sh` runs without `sudo` and does not install into system directories.
+- The interactive setup is Cloudflare-only:
+  - transport: `cloudflare`;
+  - auth mode: `none`;
+  - network trust: `cloudflare-chatgpt`.
+- The setup script never calls Cloudflare APIs and never creates Tunnel, DNS, WAF, or IP List resources.
+- `arm64` packages contain only `arm64` Mach-O slices; Intel packages contain only `x86_64`.
+- Rosetta builds, cross-builds, `lipo` merging, and slice fabrication are forbidden.
+- Candidate builds come from a clean exact commit.
+- Runtime execution does not depend on Python, `uv`, PowerShell, Homebrew, or the source tree.
+- Runtime state, user paths, logs, SQLite files, PID files, configuration, tokens, or Keychain exports must never enter the release payload.
+- `SHA256SUMS.txt` covers every regular payload file except itself.
+- `BUILD_PROVENANCE.json` contains source/build/tool/signing/input identity but no secret.
+- macOS Keychain failure is explicit and fail-closed.
+- The 22-tool MCP schema, database schema, idempotency, checkpoint, CAS, and security contracts are not widened.
+- Windows DPAPI and the existing Windows packaged behavior remain compatible.
+- Each implementation phase is independently verified before advancing.
 
-```text
-ChatGPT
--> Cloudflare network restriction
--> Tunnel
--> Bridge
--> registered project
--> mutation
--> identical replay
--> explicit approval
--> checkpoint/CAS restore
--> exact clean baseline
-```
+## Phase 1 — macOS runtime and lifecycle security baseline
 
-This evidence does **not** by itself approve stable `v0.1.0`.
+**Status: COMPLETED**
 
-## 8. Remaining v0.1.0 Work
+### Scope
 
-### Phase 6 — Windows operations and reliability
+- separate distribution root, bundled runtime root, and writable runtime home;
+- add platform-aware `SecretStore`;
+- keep environment secrets highest priority;
+- preserve Windows DPAPI;
+- add macOS Keychain storage;
+- report real secret source labels;
+- introduce POSIX process group ownership;
+- record PID, PGID, executable identity, and a stable start marker;
+- fail closed on PID reuse, marker mismatch, invalid PGID, or foreign ownership;
+- prefer packaged `cloudflared` before legacy/PATH discovery.
 
-Authoritative record:
+### Security requirements
 
-[`acceptance/phase-6-validation.md`](acceptance/phase-6-validation.md)
+- no plaintext secret fallback;
+- no secret in argv, generated TOML, logs, or temporary files;
+- no signal to an unverified process group;
+- old PID-only POSIX state is never trusted for termination;
+- shared lifecycle changes must preserve Windows behavior.
 
-Required before PASS:
+### Validation
 
-- 20/20 packaged-runtime lifecycle cycles;
-- Bridge/Tunnel/native-worker abnormal exit recovery;
-- unrelated port/listener fail-closed behavior;
-- stale state handling;
-- Git prerequisite failure diagnostics;
-- Tunnel credential failure without secret leakage;
-- disconnect during mutation without transparent replay;
-- timeout and owned process-tree cleanup;
-- synthetic secret/log canary validation;
-- spaces, Chinese paths, CRLF/LF and supported long paths;
-- dependency upgrade/rollback review.
+Required automated validation includes lock consistency, Ruff, targeted lifecycle/entry-point tests, and the full Bridge/integration suite. Native macOS smoke additionally covers Keychain round-trip and process-group ownership.
 
-### Phase 7 — Final release acceptance
+## Phase 2 — dual-architecture build and supply-chain implementation
 
-Authoritative record:
+**Status: IMPLEMENTED**
 
-[`acceptance/acceptance-test-plan.md`](acceptance/acceptance-test-plan.md)
+### Scope
 
-Required before PASS:
+- `scripts/build-macos-release.sh`;
+- verified release-asset helper and pinned manifest;
+- `codemcp-install.sh`, `codemcp-start.sh`, and `codemcp-stop.sh`;
+- macOS packaging and executable-host tests;
+- deterministic `onedir` assembly;
+- bundled pinned `cloudflared`;
+- Mach-O architecture validation;
+- ad-hoc signing;
+- `BUILD_PROVENANCE.json`;
+- `SHA256SUMS.txt`;
+- third-party license evidence.
 
-- final-RC automated suite, lint, format and build;
-- exact 22-tool MCP contract verification;
-- complete functional matrix;
-- complete security negative matrix;
-- restart/disconnect/unknown/reconcile reliability matrix;
-- 10 full real-project remote modification tasks;
-- ChatGPT-only reasoning-boundary verification.
+### Build rules
 
-### Open-source supply-chain gate
+The builder must verify:
 
-Required:
+- Darwin host;
+- native machine architecture equals requested target architecture;
+- clean Git worktree;
+- exact source/version identity;
+- pinned Python/uv/PyInstaller toolchain;
+- pinned external assets and SHA-256;
+- safe archive extraction;
+- no unexpected executable or unsafe path entry.
 
-- tracked-tree secret scan;
-- full Git-history secret scan;
-- final artifact secret scan;
-- dependency vulnerability audit;
-- dependency license review;
-- third-party notice decision.
+The authoritative dual-architecture release candidates are not local developer builds. They are generated in Phase 3 on the corresponding native GitHub-hosted runners from the same source commit.
 
-### Documentation consistency gate
+### Interactive installer contract
 
-Current normative documents must agree on:
+`codemcp-install.sh` must:
 
-- Native Windows worker as default;
-- WSL2 only as compatibility fallback;
-- Cloudflare Profile A as recommended personal path;
-- Secure MCP Tunnel as optional compatibility path;
-- Profile B OAuth as optional advanced path;
-- installed runtime does not require Python/uv/pwsh/WSL2;
-- Git for Windows is a runtime prerequisite;
-- network trust does not imply user identity;
-- current project registry hot-reload semantics.
+1. require a real TTY;
+2. verify internal checksums before reading a secret;
+3. explain that Cloudflare account-side resources are external prerequisites;
+4. collect public MCP URL, exact allowed host, optional allowed origin, and optional first project;
+5. read the Tunnel token with terminal echo disabled;
+6. keep the token out of argv, files, logs, and output;
+7. call the official `codemcp-remote init` and `project add` commands with quoted arguments;
+8. refuse unsafe overwrite of an existing home;
+9. run `doctor` after successful initialization;
+10. never auto-start a public connection after a failed setup.
 
-### Strict clean-machine packaging gate
+## Phase 3 — native CI, ad-hoc signing, and candidate convergence
 
-The final release candidate must:
+**Status: GITHUB NATIVE GATE PASS**
 
-- be rebuilt from the final release commit;
-- install on clean Windows 11;
-- run with isolated product PATH without Python/uv/pwsh;
-- use Native Windows worker;
-- register a disposable project;
-- pass real Connector read/mutation/replay/restore against that disposable project;
-- restore exact Git baseline;
-- pass cleanup/uninstall;
-- pass final artifact secret scan;
-- publish matching SHA-256.
+The authoritative release workflow uses native jobs:
 
-### GitHub hosted gate
+| Candidate | Runner | Architecture |
+| --- | --- | --- |
+| `macos-arm64` | `macos-15` | `arm64` |
+| `macos-intel64` | `macos-15-intel` | `x86_64` |
 
-Repository-side CI/governance files already exist.
+Both native jobs must:
 
-Still required:
+- build from the same clean source identity;
+- verify all Mach-O slices;
+- use ad-hoc signing;
+- prove that no project Developer ID identity is present;
+- record `developer_id=false`;
+- record notarization as `not_performed` with reason `no_certificate`;
+- preserve candidate SHA-256 and validation evidence;
+- avoid signing/notary secrets entirely.
 
-- hosted Ubuntu and Windows CI PASS;
-- PR required checks;
-- Dependabot activation;
-- branch/ruleset protection;
-- issue/PR template rendering.
+A convergence job rejects the run unless source identity, version, provenance schema, tool versions, lock hash, and signing policy match across both candidate artifacts.
 
-## 9. Execution Order From Current State
+The repository validation ledger currently records the Phase 3 gate as PASS, while exact retained workflow artifact metadata still needs to remain available for final release signoff.
 
-Proceed in this order:
+## Phase 4 — clean-host acceptance and final release gate
 
-1. align current normative documentation;
-2. execute Phase 6 real-host matrix;
-3. fix any Phase 6 blocker;
-4. execute final-RC Phase 7 automated/functional/security/reliability gates;
-5. execute 10 real-project tasks;
-6. perform secrets/supply-chain/license audit;
-7. perform strict clean-machine packaging acceptance;
-8. activate and verify hosted GitHub CI/rulesets;
-9. freeze the final release commit;
-10. rebuild final installer and ZIP from that exact commit;
-11. regenerate SHA-256 and release notes;
-12. run final Release Gate sign-off;
-13. tag `v0.1.0`;
-14. publish GitHub Release.
+**Status: INTEL64 LIVE GATE PASS / ARM64 REAL-HOST ACCEPTANCE PENDING / RELEASE BLOCKED**
 
-Any change after a gate that affects runtime behavior, security semantics, dependency lock or release artifact invalidates the affected evidence and requires re-validation.
+### Current Phase 4 repository state — 2026-08-31
 
-## 10. Non-Goals for v0.1.0
+The current repository state, not chat history, records the following:
 
-Do not add these merely to unblock the release:
+- `scripts/validate-clean-macos-release.sh` is implemented with `prepare`, `verify`, `secret-scan`, `lifecycle`, and `cleanup` actions, and the macOS build/install guide contains the clean-host flow.
+- The `BridgeError` dataclass constructor failure was fixed by replacing zero-argument `super()` with explicit `Exception.__init__`; the raw `super(type, obj)` failure no longer reproduces on the deployed Intel64 runtime.
+- Standard MCP `ToolAnnotations` are published for effectful tools. Live ChatGPT-host compatibility is verified for `checkpoint_create`, `approval_confirm`, `checkpoint_restore`, `registered_command_run`, `test_run`, and `format_run` without weakening Bridge-side approval, CAS, checkpoint, audit, or fail-closed enforcement.
+- Intel64 live acceptance passed for project open/read/write, automatic commits/checkpoints/diff, one-time approval behavior, checkpoint restore, stale-HEAD CAS rejection, project-registry hot reload, and deterministic registered `verify`, `test`, and `format` commands.
+- `scripts/codemcp-install.sh` now removes `com.apple.quarantine` recursively from its extracted distribution directory on Darwin before continuing setup. This is a best-effort unsigned-candidate usability measure; it does not modify packaged file bytes, and release guidance must still preserve trusted archive digest verification.
+- Fresh Intel64 real-machine quarantine acceptance is PASS: `./codemcp-install.sh` proceeded without any manual `xattr -dr` step and without the previous bundled Python-extension Gatekeeper block.
+- The final repository regression after all of the above changes is **393 passed, 0 failed, 8 skipped, 1 warning**. The former two real-codemcp failures were traced to a stale Phase 2 test fixture that forced WSL2 even though the current release contract is `adapter_mode="native-stdio"` with `worker_mode="local"`; after aligning the integration fixture with the release default, the full suite passed.
+- Intel64 final release gate is PASS for the unsigned candidate path.
+- Apple Silicon real-host clean-machine acceptance remains pending. GitHub native arm64 build evidence does not replace this required real-host gate.
+- The combined macOS / `v0.1.0` release gate remains blocked only on the required ARM64 real-host evidence and any final documentation/release signoff that depends on it.
 
-- arbitrary shell;
-- automatic push/merge/rebase/deploy;
-- hidden local reasoning;
-- Bridge-hosted agent loop;
-- model provider integration;
-- multi-user RBAC;
-- broad platform expansion;
-- new transports without a release-critical need;
-- a codemcp fork without demonstrated compatibility need.
+Phase 4 validates the Phase 3 artifacts on:
 
-## 11. Release Decision Rule
+- a real Intel Mac;
+- a real Apple Silicon Mac;
+- a Windows 11 host for shared-regression evidence.
 
-Stable release remains:
+### Required macOS acceptance
 
-```text
-release_decision = BLOCKED
-```
+For each architecture:
 
-until every mandatory gate in the open-source readiness plan and final acceptance plan is backed by evidence from the final release candidate.
+1. verify the outer archive SHA-256 from a trusted release channel before running any extracted code;
+2. verify internal `SHA256SUMS.txt` as part of the installer/distribution integrity flow;
+3. retain truthful provenance that the candidate is ad-hoc signed and not notarized;
+4. run `codemcp-install.sh`; on Darwin the installer best-effort clears `com.apple.quarantine` recursively from its own extracted distribution before continuing, without modifying packaged file bytes;
+5. verify that setup does not require a separate manual `xattr -dr` step on accepted unsigned-candidate hosts;
+6. verify Keychain secret persistence;
+7. register and operate on a disposable Git repository;
+8. exercise read, mutation, replay, checkpoint, and restore;
+9. run at least 20 start/status/stop cycles;
+10. test Bridge/Tunnel/worker crash and process cleanup;
+11. test stale/reused PID and process ownership protection;
+12. test unknown/reconcile behavior;
+13. verify isolated PATH operation without Python/uv/pwsh/Homebrew;
+14. cover spaces, Unicode paths, long paths, symlink escape, and read-only distribution behavior;
+15. leave no secret, log, process, or acceptance-project residue after cleanup.
 
-Implementation existence is not equivalent to release acceptance.
+### Final documentation gate
+
+Before support is declared, all of these must agree with the actual evidence:
+
+- root README;
+- architecture/security/threat model;
+- operations and platform guides;
+- macOS validation ledger;
+- final release acceptance plan;
+- changelog/open-source readiness records.
+
+Historical reports are not rewritten to simulate current evidence.
+
+## Final validation checklist
+
+The release evidence must prove:
+
+1. **Source identity** — exact source commit/tag, clean tree, lock hash.
+2. **Architecture** — every Mach-O matches the target thin architecture.
+3. **Artifact shape** — one top-level directory, stable visible files, one internal runtime directory.
+4. **Integrity** — external archive SHA-256 plus internal file checksums.
+5. **Signing** — valid ad-hoc signatures, no Developer ID, no notarization, documented quarantine behavior.
+6. **Interactive setup** — safe TTY input, Keychain storage, repeat/cancel/failure handling.
+7. **Runtime independence** — no Python/uv/pwsh/Homebrew dependency; Git remains explicit.
+8. **Lifecycle/security** — process ownership, crash handling, timeout, unknown/reconcile, redaction, loopback/network trust.
+9. **Functional contract** — frozen worker and all 22 public MCP tools preserve authorization/mutation/recovery semantics.
+10. **Cross-platform regression** — Windows packaged/runtime behavior and source CI remain healthy.
+11. **Supply chain/legal** — pinned inputs, dependency audit, license inventory, notices, and corresponding source are complete.
+
+Any later change to runtime code, the lockfile, external binaries, signing, or artifact assembly invalidates the affected evidence and requires the corresponding gate to be rerun.
+
+## Open risks
+
+| Risk | Current state | Rule |
+| --- | --- | --- |
+| No Developer ID / notarization | Accepted product limitation | Publish only ad-hoc, non-notarized artifacts; never claim Apple trust |
+| Gatekeeper quarantine | Intel64 installer auto-cleanup PASS; unsigned limitation remains | Verify trusted archive digest before running extracted code; installer cleanup is a usability measure, not Apple notarization/trust |
+| Apple Silicon clean-host resource | Pending | CI candidate does not replace real-host acceptance |
+| Intel clean-host resource | Final unsigned-candidate live gate PASS | Preserve the recorded Intel64 evidence; rerun if runtime, packaging, signing, or installer behavior changes materially |
+| Minimum macOS version | Not yet proven | Claim only versions with real evidence |
+| Keychain ACL/upgrade behavior | Intel64 base live path accepted; ARM64/upgrade-relocation matrix still pending | Fail closed on denial or backend mismatch |
+| macOS `codemcp==0.3.0` runtime behavior | Intel64 real project read/write/checkpoint/restore/commands PASS; ARM64 pending | Never silently replace the backend |
+| Shared Windows/source regression | Current full repository suite PASS at 393/0/8; mandatory after affected changes | macOS changes cannot weaken the accepted Windows contract |
+
+## Current handoff
+
+Do not restart completed Intel64 work. The repository and real Intel Mac have already proven the current implementation through the final unsigned-candidate Intel64 gate.
+
+Continue Phase 4 from this exact sequence:
+
+1. preserve the current green repository baseline: **393 passed, 0 failed, 8 skipped, 1 warning**;
+2. preserve the Intel64 evidence for approval/restore/CAS, registered commands, project-registry hot reload, quarantine auto-cleanup, and the final unsigned-candidate live gate;
+3. build/retain the matching arm64 candidate from the same release contract and confirm its CI/native packaging evidence remains green;
+4. run the equivalent clean-host evidence chain on a real Apple Silicon Mac, including installer/quarantine behavior, Keychain, read/write/checkpoint/restore, registered commands, lifecycle/security, and cleanup;
+5. update the acceptance ledger, this English canonical plan, the independent Chinese plan, and `docs/development-state.md` with the ARM64 result;
+6. only when the required ARM64 real-host gate and final documentation/release signoff are complete may the combined macOS / `v0.1.0` release gate be marked PASS.
+
+The old `BridgeError.__post_init__` and two-failure WSL2 integration baselines are closed; they must not be carried forward as accepted defects. Any later runtime, packaging, signing, external-binary, installer, or lockfile change invalidates the affected evidence and requires the corresponding gate to be rerun.
+
+Use [`acceptance/macos-v0.1.0-validation.md`](acceptance/macos-v0.1.0-validation.md), current Git state, tests, `docs/development-state.md`, this English canonical plan, and the independent Chinese plan as repository sources of truth. Critical status must be written back to all relevant repository documents; chat history is not authoritative.

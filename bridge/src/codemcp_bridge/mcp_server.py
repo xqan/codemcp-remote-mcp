@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -68,6 +69,21 @@ PUBLIC_MCP_TOOL_NAMES = frozenset(
         "operation_cancel",
         "operation_reconcile",
     }
+)
+
+# MCP annotations are host-facing hints only; Bridge-side policy, approval,
+# checkpoint, CAS, and audit enforcement remain authoritative.
+_CLOSED_WORLD_NON_DESTRUCTIVE_WRITE = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=True,
+    open_world_hint=False,
+)
+_CLOSED_WORLD_DESTRUCTIVE_WRITE = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=True,
+    idempotent_hint=True,
+    open_world_hint=False,
 )
 
 
@@ -2541,7 +2557,8 @@ def create_server(
         description=(
             "Execute one fixed pre-registered project workflow by command ID. "
             "Arbitrary shell, executable paths, argv, and runtime parameters are not accepted."
-        )
+        ),
+        annotations=_CLOSED_WORLD_DESTRUCTIVE_WRITE,
     )
     async def registered_command_run(
         project_id: str,
@@ -2560,7 +2577,10 @@ def create_server(
             request_hash,
         )
 
-    @server.tool(description="Run one registered formatting command.")
+    @server.tool(
+        description="Run one registered formatting command.",
+        annotations=_CLOSED_WORLD_DESTRUCTIVE_WRITE,
+    )
     async def format_run(
         project_id: str,
         session_id: str,
@@ -2578,7 +2598,10 @@ def create_server(
             request_hash,
         )
 
-    @server.tool(description="Run one registered test command.")
+    @server.tool(
+        description="Run one registered test command.",
+        annotations=_CLOSED_WORLD_DESTRUCTIVE_WRITE,
+    )
     async def test_run(
         project_id: str,
         session_id: str,
@@ -2611,7 +2634,10 @@ def create_server(
     ) -> dict[str, Any]:
         return await service.git_diff(ctx, project_id, session_id, checkpoint_id)
 
-    @server.tool(description="Create a Bridge-owned Git checkpoint after explicit approval.")
+    @server.tool(
+        description="Create a Bridge-owned Git checkpoint after explicit approval.",
+        annotations=_CLOSED_WORLD_NON_DESTRUCTIVE_WRITE,
+    )
     async def checkpoint_create(
         project_id: str,
         session_id: str,
@@ -2627,7 +2653,10 @@ def create_server(
             request_hash,
         )
 
-    @server.tool(description="Restore a Bridge-owned checkpoint with compare-and-swap approval.")
+    @server.tool(
+        description="Restore a Bridge-owned checkpoint with compare-and-swap approval.",
+        annotations=_CLOSED_WORLD_DESTRUCTIVE_WRITE,
+    )
     async def checkpoint_restore(
         project_id: str,
         session_id: str,
@@ -2653,7 +2682,10 @@ def create_server(
     ) -> dict[str, Any]:
         return await service.operation_status(ctx, operation_id, session_id)
 
-    @server.tool(description="Consume a one-time approval token and run its operation.")
+    @server.tool(
+        description="Consume a one-time approval token and run its operation.",
+        annotations=_CLOSED_WORLD_DESTRUCTIVE_WRITE,
+    )
     async def approval_confirm(
         operation_id: str,
         session_id: str,
@@ -2671,7 +2703,10 @@ def create_server(
             request_hash,
         )
 
-    @server.tool(description="Cancel an operation that is still awaiting approval.")
+    @server.tool(
+        description="Cancel an operation that is still awaiting approval.",
+        annotations=_CLOSED_WORLD_NON_DESTRUCTIVE_WRITE,
+    )
     async def operation_cancel(
         operation_id: str,
         session_id: str,
@@ -2687,7 +2722,10 @@ def create_server(
             request_hash,
         )
 
-    @server.tool(description="Reconcile an unknown mutation as explicitly not executed.")
+    @server.tool(
+        description="Reconcile an unknown mutation as explicitly not executed.",
+        annotations=_CLOSED_WORLD_DESTRUCTIVE_WRITE,
+    )
     async def operation_reconcile(
         operation_id: str,
         session_id: str,

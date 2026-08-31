@@ -1,21 +1,45 @@
-# codemcp-remote-bridge
+# codemcp-remote Bridge
 
-本包是 codemcp-remote 的本机 Bridge。当前已实现 loopback-only MCP
-Server、项目注册、路径/命令策略、结构化错误、固定版 codemcp Adapter、SQLite
-生命周期持久化、Bridge-owned Git checkpoint、受限 diff 和 compare-and-swap
-rollback。Secure MCP Tunnel 的启动、profile 校验和诊断脚本位于仓库根目录
-`scripts/`，Bridge 本身仍只监听 loopback。
+[Simplified Chinese](README.zh-CN.md)
 
-Phase 1 已确定 codemcp mutation worker 运行在 WSL2；原生 Windows 的
-Git-backed mutation 不支持。Adapter 必须显式处理 Windows/WSL 路径映射、
-worker 超时和进程树清理，详见
-`docs/reports/compatibility/codemcp-compatibility-matrix.md`。
+`codemcp-remote-bridge` is the local policy and execution boundary used by codemcp-remote. It exposes a constrained MCP surface for operating on explicitly registered local Git repositories while keeping the Bridge itself loopback-only.
 
-本包不包含任何模型调用。
+The Bridge provides:
 
-本地检查和启动：
+- explicit project registration and path containment;
+- sensitive-path denial;
+- registered-command execution instead of arbitrary shell/argv;
+- structured operation state and idempotency;
+- one-time approval flows for high-risk actions;
+- Bridge-owned Git checkpoints, bounded diffs, and compare-and-swap restore;
+- audit and restart-safe `unknown` side-effect handling;
+- managed native worker lifecycle;
+- Cloudflare network-trust and optional OAuth Resource Server boundaries.
 
-~~~text
+The Bridge contains **no model provider and no agent loop**. ChatGPT remains the reasoning engine; repository content is untrusted data and cannot authorize a privileged operation.
+
+## Worker baseline
+
+The current Windows packaged baseline uses the **native Windows codemcp worker**. WSL2 remains an optional source-mode compatibility fallback.
+
+macOS native packaging is an active validation track. The native `arm64` and `x86_64` candidate build gate has passed, but clean-host acceptance remains required before macOS is described as supported.
+
+See:
+
+- [`../docs/architecture/architecture.md`](../docs/architecture/architecture.md)
+- [`../docs/architecture/security-model.md`](../docs/architecture/security-model.md)
+- [`../docs/guides/codemcp-baseline.md`](../docs/guides/codemcp-baseline.md)
+- [`../docs/acceptance/macos-v0.1.0-validation.md`](../docs/acceptance/macos-v0.1.0-validation.md)
+
+## Local development
+
+From the repository root:
+
+```text
+uv sync --project bridge
 uv run --project bridge codemcp-bridge-server check
-uv run --project bridge codemcp-bridge-server serve
-~~~
+uv run --project bridge ruff check bridge/src bridge/tests tests/integration
+uv run --project bridge pytest -q bridge/tests tests/integration
+```
+
+The packaged runtime contract and release checks are documented in the repository-level [`README.md`](../README.md) and [`docs/README.md`](../docs/README.md).

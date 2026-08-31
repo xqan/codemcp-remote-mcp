@@ -19,8 +19,35 @@ def test_packaged_executable_defaults_to_start_and_install_directory(tmp_path: P
 
     assert main_module.default_cli_command(frozen=True) == "start"
     assert main_module.default_cli_command(frozen=False) == "serve"
-    assert main_module.default_runtime_home(runtime, frozen=True) == runtime.resolve()
+    assert (
+        main_module.default_runtime_home(runtime, frozen=True, platform="win32")
+        == runtime.resolve()
+    )
     assert main_module.default_runtime_home(runtime, frozen=False) is None
+
+
+def test_macos_packaged_home_is_application_support(tmp_path: Path) -> None:
+    runtime = tmp_path / "distribution"
+    user_home = tmp_path / "user"
+
+    assert (
+        main_module.default_runtime_home(
+            runtime,
+            frozen=True,
+            platform="darwin",
+            user_home=user_home,
+        )
+        == (user_home / "Library" / "Application Support" / "codemcp-remote").resolve()
+    )
+
+
+def test_bundled_runtime_root_is_separate_from_distribution(tmp_path: Path) -> None:
+    distribution = tmp_path / "distribution"
+
+    assert (
+        main_module.bundled_runtime_root(distribution)
+        == (distribution / ".codemcp-runtime").resolve()
+    )
 
 
 def test_internal_worker_dispatch_skips_bridge_configuration(

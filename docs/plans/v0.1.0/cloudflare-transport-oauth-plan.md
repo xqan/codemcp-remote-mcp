@@ -328,7 +328,7 @@ Validation on 2026-08-26:
 - Python `compileall`: PASS;
 - `git diff --check`: PASS.
 
-**STOP GATE:** Phase B is COMPLETE. Phase C is recorded below; Phase D still requires a new explicit `继续` instruction.
+**STOP GATE:** Phase B is COMPLETE. Phase C is recorded below; Phase D still requires a new explicit `continue` instruction.
 
 ## Phase C — Host/Origin enforcement, network principal, and replay/session isolation
 
@@ -377,7 +377,7 @@ Validation on 2026-08-26:
 - related Phase 2 MCP server integration regression: `19 passed`;
 - Python `compileall`, Ruff format check, Ruff check, and `git diff --check`: PASS.
 
-**STOP GATE:** Phase C is COMPLETE. Phase D (CLI/init, doctor, public-start fail-closed enforcement, and health lifecycle routing) has not started and requires a new explicit `继续` instruction.
+**STOP GATE:** Phase C is COMPLETE. Phase D (CLI/init, doctor, public-start fail-closed enforcement, and health lifecycle routing) has not started and requires a new explicit `continue` instruction.
 
 ## 1. Context
 
@@ -1554,4 +1554,4 @@ After completing each phase:
 2. report tests/evidence;
 3. report commit;
 4. report remaining blockers;
-5. STOP and wait for explicit `继续`.
+5. STOP and wait for explicit `continue`.
