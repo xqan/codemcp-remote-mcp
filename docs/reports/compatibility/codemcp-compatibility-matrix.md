@@ -1,85 +1,76 @@
-# codemcp Phase 1 兼容性矩阵
+# codemcp Phase 1 Compatibility Matrix
 
-## 结论
+[Simplified Chinese](../../zh-CN/codemcp-compatibility-matrix.md)
 
-固定的 `codemcp==0.3.0` 现在可以作为 **Windows 11 原生 stdio worker**
-运行 Git-backed 子工具。`codemcp-remote` 不再要求把 mutation worker 放进
-WSL2；默认模式改为 `local`，WSL2 Ubuntu 仅保留为显式 fallback。
+## Conclusion
 
-本项目没有维护 `codemcp` fork。Windows 差异被隔离在
-`codemcp_bridge.native_codemcp_worker` 中，对固定的上游 `0.3.0` 应用两个
-窄兼容修复：
+Pinned `codemcp==0.3.0` can run Git-backed subtools as a **native Windows 11 stdio worker**. `codemcp-remote` no longer requires the mutation worker to run inside WSL2. The default worker mode is `local`; WSL2 Ubuntu remains an explicit compatibility fallback.
 
-1. 对没有显式 stdin 的 `asyncio.create_subprocess_exec` 调用补
-   `stdin=asyncio.subprocess.DEVNULL`，防止 Git/命令子进程继承 MCP stdio
-   server 的 stdin 后阻塞。
-2. 替换 worker 进程内的 `codemcp.tools.file_utils.write_file_sync`，以
-   `newline=""` 写入已经由 codemcp 规范化的行尾，避免 Windows 文本模式对
-   `\r\n` 再做一次翻译而产生 `\r\r\n`。
+The project does not maintain a `codemcp` fork. Windows-specific behavior is isolated in `codemcp_bridge.native_codemcp_worker`, which applies two narrow compatibility adaptations to pinned upstream `0.3.0`:
 
-真实 Windows gate 会从 WSL 测试宿主调用 Windows PowerShell 和 Windows `uv`，
-执行原生 Windows 的 worker/兼容矩阵。当前完整回归结果为 **142 passed**，
-原生 Windows gate PASS；同一套回归同时保留 WSL2 fallback 覆盖。
+1. when an upstream `asyncio.create_subprocess_exec` call does not explicitly supply stdin, the wrapper provides `stdin=asyncio.subprocess.DEVNULL`, preventing Git/command child processes from inheriting the MCP stdio server input and blocking;
+2. the worker-process `codemcp.tools.file_utils.write_file_sync` path is wrapped so already-normalized line endings are written with `newline=""`, preventing Windows text mode from translating `\r\n` a second time into `\r\r\n`.
 
-## 版本和验证环境
+The native Windows gate can be launched from a WSL test host through Windows PowerShell and Windows `uv`, so Windows behavior is exercised by the actual Windows worker rather than simulated by WSL.
 
-- 上游仓库：[ezyang/codemcp](https://github.com/ezyang/codemcp)
-- Release/tag：`0.3.0`
-- Release commit：`683e6ec29b15b91ec12430afabf5a45ed57d2489`
-- 项目 Python 要求：`>=3.12`
-- Host：Windows 11
-- Native Git：Git for Windows
-- Fallback：WSL2 Ubuntu
-- codemcp 安装来源：PyPI，版本固定在 `bridge/uv.lock`
-- Windows 兼容入口：`codemcp_bridge.native_codemcp_worker`
+The compatibility-baseline run recorded **142 passed**, with the native Windows gate PASS while retaining WSL2 fallback coverage.
 
-## MCP 合约
+## Version and validation environment
 
-探针使用 MCP SDK 的 `stdio_client` 和 `ClientSession`，并为每个 worker 使用
-隔离 HOME。当前结果：
+- Upstream repository: [ezyang/codemcp](https://github.com/ezyang/codemcp)
+- Release/tag: `0.3.0`
+- Release commit: `683e6ec29b15b91ec12430afabf5a45ed57d2489`
+- Project Python requirement: `>=3.12`
+- Primary host: Windows 11
+- Native Git: Git for Windows
+- Fallback host: WSL2 Ubuntu
+- codemcp installation source: PyPI, pinned in `bridge/uv.lock`
+- Windows compatibility entry point: `codemcp_bridge.native_codemcp_worker`
 
-| 检查项 | Windows 原生 | WSL2 Ubuntu | 实际观察 |
-|---|---|---|---|
-| worker 启动 | PASS | PASS | 原生使用 Bridge compatibility entry point；WSL2 使用固定 Python worker |
-| `initialize` | PASS | PASS | MCP session 可初始化 |
-| `tools/list` | PASS | PASS | 暴露单一 `codemcp` MCP tool |
-| 输入/输出 schema | PASS | PASS | `subtool` required |
-| `ReadFile` | PASS | PASS | 中文、空格和长嵌套路径可读 |
-| Git-backed subtools | PASS | PASS | 30 秒 bounded compatibility budget |
-| worker 关闭/重启 | PASS | PASS | context 关闭后可重新 initialize |
-| 两个 stdio worker 并行启动 | PASS | PASS | 两个独立 worker 均可发现工具 |
-| stdio 端口冲突 | N/A | N/A | stdio worker 不监听端口 |
+## MCP contract
 
-实际暴露的 `subtool` 包括：
+The probe uses the MCP SDK `stdio_client` and `ClientSession`, with an isolated HOME for every worker.
 
-`InitProject`、`ReadFile`、`WriteFile`、`EditFile`、`LS`、`Grep`、`RunCommand`。
+| Check | Native Windows | WSL2 Ubuntu | Observed behavior |
+| --- | --- | --- | --- |
+| Worker startup | PASS | PASS | Native path uses the Bridge compatibility entry point; WSL2 uses the pinned Python worker |
+| `initialize` | PASS | PASS | MCP session initializes |
+| `tools/list` | PASS | PASS | Exposes a single `codemcp` MCP tool |
+| Input/output schema | PASS | PASS | `subtool` is required |
+| `ReadFile` | PASS | PASS | Unicode/CJK, spaces, and deeply nested paths are readable |
+| Git-backed subtools | PASS | PASS | 30-second bounded compatibility budget |
+| Worker close/restart | PASS | PASS | Worker can initialize again after context close |
+| Two stdio workers in parallel | PASS | PASS | Both independent workers discover tools |
+| stdio port collision | N/A | N/A | stdio workers do not listen on a port |
 
-`Format` 不是独立 subtool；格式化仍通过登记在 `codemcp.toml` 的
-`RunCommand` 命令表达。
+Observed `subtool` values include:
 
-## 工具和 Git 行为
+`InitProject`, `ReadFile`, `WriteFile`, `EditFile`, `LS`, `Grep`, and `RunCommand`.
 
-| 能力 | Windows 原生 | WSL2 Ubuntu |
-|---|---|---|
+`Format` is not a separate subtool. Formatting remains expressed as a registered `RunCommand` command from `codemcp.toml`.
+
+## Tool and Git behavior
+
+| Capability | Native Windows | WSL2 Ubuntu |
+| --- | --- | --- |
 | `InitProject` | PASS | PASS |
 | `LS` / `Grep` | PASS | PASS |
 | `ReadFile` | PASS | PASS |
 | `EditFile` / `WriteFile` | PASS | PASS |
 | `RunCommand` | PASS | PASS |
-| 中文/空格路径 | PASS | PASS |
-| worker restart / duplicate startup | PASS | PASS |
-| bounded worker timeout policy | PASS | PASS |
+| Unicode/CJK and space-containing paths | PASS | PASS |
+| Worker restart / duplicate startup | PASS | PASS |
+| Bounded worker timeout policy | PASS | PASS |
 
-Git-backed edit/write 验证同时检查 HEAD、commit count 和 clean worktree。
-Windows `WriteFile` 还覆盖了 CRLF 语义，防止兼容层引入额外空行。
+Git-backed edit/write validation checks HEAD, commit count, and a clean worktree. Windows `WriteFile` additionally covers CRLF semantics so the compatibility layer cannot introduce blank-line corruption.
 
-## Windows 根因与修复边界
+## Windows root causes and compatibility boundary
 
-### 1. Git-backed 子工具阻塞
+### 1. Git-backed subtools could block on inherited stdin
 
-上游 `codemcp 0.3.0` 的 `codemcp/shell.py` 调用：
+Upstream `codemcp 0.3.0` calls:
 
-~~~python
+```python
 await asyncio.create_subprocess_exec(
     *cmd,
     cwd=cwd,
@@ -87,57 +78,50 @@ await asyncio.create_subprocess_exec(
     stdout=stdout_pipe,
     stderr=stderr_pipe,
 )
-~~~
+```
 
-没有为子进程指定 stdin。MCP server 自己使用 stdio transport，因此 Windows
-Git/命令子进程继承同一 stdin 时可能阻塞。
+No stdin is specified. Because the MCP server itself uses stdio transport, a Git/command child process can inherit the same stdin on Windows and block.
 
-Bridge compatibility entry point 只在 Windows worker 进程中为“调用方没有
-显式传 stdin”的 subprocess 补 `DEVNULL`。显式 stdin 仍被保留。
+The Bridge compatibility entry point modifies only Windows worker-process calls where the caller did not explicitly provide stdin, supplying `DEVNULL`. An explicitly provided stdin is preserved.
 
-### 2. Windows 行尾二次翻译
+### 2. Windows line endings could be translated twice
 
-上游 `write_text_content` 会先根据目标文件把 `\n` 转为所需的 `\r\n`，
-随后 `write_file_sync` 使用默认文本模式再次写入。在 Windows 上这会再次翻译
-换行，产生 `\r\r\n`。
+Upstream `write_text_content` first normalizes `\n` to the target file line ending such as `\r\n`. A later default text-mode write on Windows can translate those line endings again, producing `\r\r\n`.
 
-Bridge wrapper 只替换 worker 进程内的同步写入 helper，并使用 `newline=""`，
-让已经规范化的行尾按原样写入。上游包文件本身没有被修改。
+The Bridge wrapper changes only the synchronous write helper inside the worker process and uses `newline=""`, preserving the line endings already normalized by codemcp. Upstream package files are not modified.
 
-## 生命周期和安全边界
+## Lifecycle and security boundary
 
-- `worker_mode = "local"` 是默认值。
-- `worker_mode = "wsl2"` 仍受支持，可作为 fallback。
-- worker timeout 继续由 Bridge 外层强制执行；不能依赖上游命令的内部 timeout。
-- timeout/cancellation 会 fail closed；mutation timeout 映射为
-  `UNKNOWN_SIDE_EFFECT`。
-- `stop-all.ps1` 同时识别 native Windows worker 和 WSL2 fallback worker，
-  可清理 Bridge-owned/orphaned worker process tree。
-- 完整的多轮 start/stop、强制进程崩溃和 clean-machine operations stress
-  仍属于发布生命周期 gate，不由本兼容矩阵单独替代。
+- `worker_mode = "local"` is the default.
+- `worker_mode = "wsl2"` remains supported as an explicit fallback.
+- Worker timeout is enforced by the outer Bridge; it does not depend on an upstream command-internal timeout.
+- Timeout/cancellation fails closed; a mutation timeout maps to `UNKNOWN_SIDE_EFFECT`.
+- `stop-all.ps1` recognizes both native Windows and WSL2 fallback workers and can clean Bridge-owned/orphaned worker process trees.
+- Full multi-cycle lifecycle, forced process crash, and clean-machine operational stress are release gates and are not replaced by this compatibility matrix.
 
-## 命令安全边界
+## Command security boundary
 
-上游 `RunCommand` 从 `codemcp.toml` 读取命令列表，并允许追加 arguments。
-Bridge 不直接暴露这个参数面给 ChatGPT，只接受登记的 command ID 和 Bridge
-解析出的固定结构化 argv。
+Upstream `RunCommand` reads commands from `codemcp.toml` and supports appended arguments.
 
-## ChatGPT-only 检查
+The Bridge does **not** expose that unrestricted argument surface to ChatGPT. Remote callers provide a registered command ID; the Bridge resolves the fixed structured argv under local policy.
 
-- `codemcp` 仍固定为上游 `0.3.0`；本阶段没有引入新的模型 provider。
-- Bridge 保持 `model_egress = "deny"`。
-- Windows compatibility wrapper 只改变本地 subprocess/file-write 行为。
+## ChatGPT-only boundary
 
-## 验证
+- `codemcp` remains pinned to upstream `0.3.0`.
+- This compatibility work adds no model provider.
+- Bridge policy remains `model_egress = "deny"`.
+- The Windows compatibility wrapper changes only local subprocess and file-write behavior.
 
-主要 gate：
+## Validation
 
-~~~text
+Primary gate:
+
+```text
 uv run --project bridge pytest -q
-~~~
+```
 
-测试套件还包含 `test_native_windows_worker_host.py`：当测试宿主位于 WSL 时，
-它通过 Windows PowerShell 调起 Windows `uv`，重新执行 native worker 单元测试
-和 `test_codemcp_compatibility.py`，确保“Windows PASS”不是由 WSL 环境模拟得出。
+The suite also includes `test_native_windows_worker_host.py`. When the test host is WSL, it launches Windows PowerShell and Windows `uv` to execute the native-worker unit tests and `test_codemcp_compatibility.py`, so a Windows PASS is based on Windows execution rather than a WSL approximation.
 
-当前结果：**142 passed**。
+Recorded compatibility-baseline result: **142 passed**.
+
+This report is historical compatibility evidence. Current product support and release claims are defined by the current architecture, operator guides, and acceptance documents.

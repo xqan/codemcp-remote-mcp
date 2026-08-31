@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import __version__
 from .lifecycle import (
+    APP_NAME,
     DEFAULT_BRIDGE_URL,
     DEFAULT_HEALTH_LISTEN_ADDR,
     DEFAULT_PROFILE,
@@ -49,17 +50,33 @@ def is_frozen_runtime(*, frozen: bool | None = None) -> bool:
     return bool(getattr(sys, "frozen", False)) if frozen is None else frozen
 
 
-def runtime_root(
+def distribution_root(
     *,
     frozen: bool | None = None,
     executable: Path | None = None,
 ) -> Path:
-    """Return the repository root in source mode or the executable directory when frozen."""
+    """Return the read-only distribution root for source or packaged execution."""
 
     if is_frozen_runtime(frozen=frozen):
         executable_path = Path(sys.executable) if executable is None else executable
         return executable_path.resolve().parent
     return Path(__file__).resolve().parents[3]
+
+
+def runtime_root(
+    *,
+    frozen: bool | None = None,
+    executable: Path | None = None,
+) -> Path:
+    """Compatibility alias for the distribution root."""
+
+    return distribution_root(frozen=frozen, executable=executable)
+
+
+def bundled_runtime_root(distribution_root_path: Path) -> Path:
+    """Return the fixed hidden root for packaged runtime dependencies."""
+
+    return distribution_root_path.resolve() / ".codemcp-runtime"
 
 
 def default_cli_command(*, frozen: bool | None = None) -> str:
@@ -68,10 +85,24 @@ def default_cli_command(*, frozen: bool | None = None) -> str:
     return "start" if is_frozen_runtime(frozen=frozen) else "serve"
 
 
-def default_runtime_home(runtime_root_path: Path, *, frozen: bool | None = None) -> Path | None:
-    """Use the installation directory as the packaged runtime home by default."""
+def default_runtime_home(
+    runtime_root_path: Path,
+    *,
+    frozen: bool | None = None,
+    platform: str | None = None,
+    user_home: Path | None = None,
+) -> Path | None:
+    """Return the platform-specific packaged writable home without migrating source mode."""
 
-    return runtime_root_path.resolve() if is_frozen_runtime(frozen=frozen) else None
+    if not is_frozen_runtime(frozen=frozen):
+        return None
+    effective_platform = sys.platform if platform is None else platform
+    if effective_platform == "darwin":
+        base = Path.home() if user_home is None else user_home
+        return (
+            base.expanduser().resolve(strict=False) / "Library" / "Application Support" / APP_NAME
+        )
+    return runtime_root_path.resolve()
 
 
 RUNTIME_ROOT = runtime_root()
@@ -112,7 +143,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--home",
         type=Path,
-        help="writable runtime home (overrides CODEMCP_HOME; packaged default: EXE directory)",
+        help=(
+            "writable runtime home (overrides CODEMCP_HOME; packaged default is platform-specific)"
+        ),
     )
     parser.add_argument("--app-root", type=Path)
     parser.add_argument("--transport", choices=("openai-tunnel", "cloudflare"))
@@ -232,14 +265,14 @@ def main() -> int:
                             "--store-api-key is only valid for the openai-tunnel transport; "
                             "use --store-transport-secret"
                         )
-                    store_api_key_from_environment(paths)
-                    result["api_key"] = "stored-with-windows-dpapi"
+                    result["api_key"] = store_api_key_from_environment(paths)
                 if args.store_transport_secret:
-                    store_transport_secret_from_environment(paths, provider=provider)
-                    result["transport_secret"] = "stored-with-windows-dpapi"
+                    result["transport_secret"] = store_transport_secret_from_environment(
+                        paths,
+                        provider=provider,
+                    )
                 if args.store_auth_secret:
-                    store_resource_auth_secret_from_environment(paths)
-                    result["auth_secret"] = "stored-with-windows-dpapi"
+                    result["auth_secret"] = store_resource_auth_secret_from_environment(paths)
                 tunnel = load_tunnel_settings(paths)
                 config = initialize_tunnel_profile(paths, tunnel, force=args.force)
                 result["transport_config"] = str(config)

@@ -1,5 +1,7 @@
 # codemcp-remote
 
+[Simplified Chinese](README.zh-CN.md)
+
 A policy-controlled local MCP bridge for using **ChatGPT as the only reasoning engine** while safely operating on registered local code repositories.
 
 ```text

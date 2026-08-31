@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -31,6 +32,13 @@ from .resource_auth import (
     OnlineResourceServerValidator,
     ResourceServerValidationConfig,
 )
+from .secret_store import (
+    MacOSKeychainSecretStore,
+    SecretStore,
+    SecretStoreError,
+    SecretValue,
+    WindowsDpapiSecretStore,
+)
 from .settings import PROJECT_ID_PATTERN, SettingsError, load_settings
 from .transports import (
     OPENAI_TUNNEL_PROVIDER,
@@ -54,11 +62,14 @@ _REMOTE_TRANSPORT = OPENAI_TUNNEL_PROVIDER
 _SECRET_NAME = _REMOTE_TRANSPORT.secret_env_name
 _LOG_MAX_BYTES = 5 * 1024 * 1024
 _LOG_BACKUP_COUNT = 3
+_POSIX_SIGTERM = getattr(signal, "SIGTERM", 15)
+_POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimePaths:
     runtime_root: Path
+    bundled_runtime_root: Path
     app_root: Path
     config_dir: Path
     data_dir: Path
@@ -72,6 +83,12 @@ class RuntimePaths:
     state_file: Path
     secret_file: Path
     layout: str = "legacy"
+
+    @property
+    def distribution_root(self) -> Path:
+        """The read-only distribution root containing templates and notices."""
+
+        return self.runtime_root
 
     @property
     def home(self) -> Path:
@@ -182,6 +199,7 @@ def resolve_runtime_paths(
     secret_dir = root / "secrets"
     return RuntimePaths(
         runtime_root=runtime,
+        bundled_runtime_root=runtime / ".codemcp-runtime",
         app_root=root,
         config_dir=config_dir,
         data_dir=data_dir,
@@ -219,7 +237,8 @@ def runtime_paths(
 
 def _transport_context(paths: RuntimePaths) -> TransportContext:
     return TransportContext(
-        runtime_root=paths.runtime_root,
+        runtime_root=paths.distribution_root,
+        bundled_runtime_root=paths.bundled_runtime_root,
         app_root=paths.app_root,
         config_dir=paths.config_dir,
         log_dir=paths.log_dir,
@@ -1051,41 +1070,105 @@ def _provider_secret_path(
     return paths.secret_dir / filename
 
 
+def _platform_secret_store(
+    paths: RuntimePaths,
+    *,
+    logical_secret_id: str,
+    windows_secret_path: Path,
+) -> SecretStore | None:
+    if sys.platform == "darwin":
+        return MacOSKeychainSecretStore(paths.home, logical_secret_id)
+    if os.name == "nt":
+        return WindowsDpapiSecretStore(
+            windows_secret_path,
+            protect=_dpapi_protect,
+            unprotect=_dpapi_unprotect,
+        )
+    return None
+
+
+def _read_secret(
+    paths: RuntimePaths,
+    *,
+    env_name: str,
+    logical_secret_id: str,
+    windows_secret_path: Path,
+) -> SecretValue:
+    value = os.environ.get(env_name)
+    if value:
+        return SecretValue(value, "environment")
+    store = _platform_secret_store(
+        paths,
+        logical_secret_id=logical_secret_id,
+        windows_secret_path=windows_secret_path,
+    )
+    if store is None:
+        return SecretValue(None, "none")
+    try:
+        return store.read()
+    except SecretStoreError as exc:
+        raise LifecycleError(str(exc)) from exc
+
+
+def _store_secret_from_environment(
+    paths: RuntimePaths,
+    *,
+    env_name: str,
+    logical_secret_id: str,
+    windows_secret_path: Path,
+) -> str:
+    value = os.environ.get(env_name)
+    if not value:
+        raise LifecycleError(f"{env_name} is not set in the current process")
+    store = _platform_secret_store(
+        paths,
+        logical_secret_id=logical_secret_id,
+        windows_secret_path=windows_secret_path,
+    )
+    if store is None:
+        raise LifecycleError("secure native secret storage is unavailable on this platform")
+    ensure_runtime_dirs(paths)
+    try:
+        return store.write(value)
+    except SecretStoreError as exc:
+        raise LifecycleError(str(exc)) from exc
+
+
+def _transport_secret_value(
+    paths: RuntimePaths,
+    provider: RemoteTransportProvider | None = None,
+) -> SecretValue:
+    effective = load_transport_provider(paths)[0] if provider is None else provider
+    return _read_secret(
+        paths,
+        env_name=effective.secret_env_name,
+        logical_secret_id=f"transport:{effective.provider_id}:{effective.secret_env_name}",
+        windows_secret_path=_provider_secret_path(paths, effective),
+    )
+
+
 def _secret_from_runtime(
     paths: RuntimePaths,
     provider: RemoteTransportProvider | None = None,
 ) -> str | None:
-    effective = load_transport_provider(paths)[0] if provider is None else provider
-    value = os.environ.get(effective.secret_env_name)
-    if value:
-        return value
-    secret_path = _provider_secret_path(paths, effective)
-    if secret_path.is_file() and os.name == "nt":
-        return _dpapi_unprotect(secret_path.read_bytes()).decode("utf-8")
-    return None
+    return _transport_secret_value(paths, provider).value
 
 
 def store_transport_secret_from_environment(
     paths: RuntimePaths,
     *,
     provider: RemoteTransportProvider | None = None,
-) -> bool:
+) -> str:
     effective = load_transport_provider(paths)[0] if provider is None else provider
-    value = os.environ.get(effective.secret_env_name)
-    if not value:
-        raise LifecycleError(f"{effective.secret_env_name} is not set in the current process")
-    if os.name != "nt":
-        raise LifecycleError(
-            "secure transport secret storage is currently supported only on Windows"
-        )
-    ensure_runtime_dirs(paths)
-    secret_path = _provider_secret_path(paths, effective)
-    encrypted = _dpapi_protect(value.encode("utf-8"))
-    secret_path.write_bytes(encrypted)
-    return True
+    return _store_secret_from_environment(
+        paths,
+        env_name=effective.secret_env_name,
+        logical_secret_id=f"transport:{effective.provider_id}:{effective.secret_env_name}",
+        windows_secret_path=_provider_secret_path(paths, effective),
+    )
 
 
-def store_api_key_from_environment(paths: RuntimePaths) -> bool:
+def store_api_key_from_environment(paths: RuntimePaths) -> str:
     return store_transport_secret_from_environment(
         paths,
         provider=OPENAI_TUNNEL_PROVIDER,
@@ -1096,31 +1179,29 @@ def _resource_auth_secret_path(paths: RuntimePaths) -> Path:
     return paths.secret_dir / RESOURCE_AUTH_SECRET_FILE_NAME
 
 
+def _resource_auth_secret_value(paths: RuntimePaths) -> SecretValue:
+    return _read_secret(
+        paths,
+        env_name=RESOURCE_AUTH_SECRET_ENV_NAME,
+        logical_secret_id="resource-auth:verification-secret",
+        windows_secret_path=_resource_auth_secret_path(paths),
+    )
+
+
 def _resource_auth_secret_from_runtime(paths: RuntimePaths) -> str | None:
-    value = os.environ.get(RESOURCE_AUTH_SECRET_ENV_NAME)
-    if value:
-        return value
-    secret_path = _resource_auth_secret_path(paths)
-    if secret_path.is_file() and os.name == "nt":
-        return _dpapi_unprotect(secret_path.read_bytes()).decode("utf-8")
-    return None
+    return _resource_auth_secret_value(paths).value
 
 
-def store_resource_auth_secret_from_environment(paths: RuntimePaths) -> bool:
+def store_resource_auth_secret_from_environment(paths: RuntimePaths) -> str:
     auth, _ = load_resource_auth_settings(paths)
     if auth is None:
         raise LifecycleError("OAuth Resource Server auth is not configured")
-    value = os.environ.get(RESOURCE_AUTH_SECRET_ENV_NAME)
-    if not value:
-        raise LifecycleError(f"{RESOURCE_AUTH_SECRET_ENV_NAME} is not set in the current process")
-    if os.name != "nt":
-        raise LifecycleError(
-            "secure Resource Server verification secret storage is currently supported "
-            "only on Windows"
-        )
-    ensure_runtime_dirs(paths)
-    _resource_auth_secret_path(paths).write_bytes(_dpapi_protect(value.encode("utf-8")))
-    return True
+    return _store_secret_from_environment(
+        paths,
+        env_name=RESOURCE_AUTH_SECRET_ENV_NAME,
+        logical_secret_id="resource-auth:verification-secret",
+        windows_secret_path=_resource_auth_secret_path(paths),
+    )
 
 
 def load_request_authenticator(paths: RuntimePaths) -> OAuthResourceServerAuthenticator | None:
@@ -1148,14 +1229,11 @@ def resource_auth_status(paths: RuntimePaths) -> dict[str, Any]:
     if auth is None:
         return {"status": "disabled", "mode": "none", "source": source}
 
-    secret_path = _resource_auth_secret_path(paths)
-    secret_source = (
-        "environment"
-        if os.environ.get(RESOURCE_AUTH_SECRET_ENV_NAME)
-        else ("windows-dpapi" if secret_path.is_file() else "none")
-    )
+    secret_source = "none"
     try:
-        secret_available = bool(_resource_auth_secret_from_runtime(paths))
+        secret_value = _resource_auth_secret_value(paths)
+        secret_available = bool(secret_value.value)
+        secret_source = secret_value.source
     except (LifecycleError, OSError, UnicodeDecodeError) as exc:
         return {
             "status": "invalid",
@@ -1366,6 +1444,8 @@ def _popen_background(
         kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
             subprocess, "CREATE_NO_WINDOW", 0
         )
+    else:
+        kwargs["start_new_session"] = True
     try:
         process = subprocess.Popen(args, **kwargs)
     finally:
@@ -1454,7 +1534,7 @@ def start_services(
             state = json.loads(paths.state_file.read_text(encoding="utf-8"))
             old_tunnel_pid = int(state.get("tunnel_pid", 0))
             if tunnel_owned and old_tunnel_pid > 0:
-                _terminate_tree(old_tunnel_pid)
+                _terminate_state_process(state, "tunnel")
             if _http_check(tunnel_ready)["status"] == "ok":
                 raise LifecycleError(
                     "Tunnel health endpoint is already occupied; refusing unsafe takeover"
@@ -1486,8 +1566,7 @@ def start_services(
                         f"Tunnel startup failed: {json.dumps(tunnel_wait, ensure_ascii=False)}"
                     )
                 state["transport"] = provider.provider_id
-                state["tunnel_pid"] = tunnel_process.pid
-                state["tunnel_process_marker"] = _process_marker(tunnel_process.pid)
+                _capture_process_state(state, "tunnel", tunnel_process.pid)
                 state["tunnel_ready_url"] = tunnel_ready
                 _write_json_atomic(paths.state_file, state)
                 return {
@@ -1534,7 +1613,7 @@ def start_services(
             state = json.loads(paths.state_file.read_text(encoding="utf-8"))
             old_bridge_pid = int(state.get("bridge_pid", 0))
             if bridge_owned and old_bridge_pid > 0:
-                _terminate_tree(old_bridge_pid)
+                _terminate_state_process(state, "bridge")
 
             bridge_health_headers = _bridge_probe_headers(
                 security.network_trust.allowed_hosts
@@ -1586,8 +1665,7 @@ def start_services(
                     raise LifecycleError(
                         f"Bridge startup failed: {json.dumps(bridge_wait, ensure_ascii=False)}"
                     )
-                state["bridge_pid"] = bridge_process.pid
-                state["bridge_process_marker"] = _process_marker(bridge_process.pid)
+                _capture_process_state(state, "bridge", bridge_process.pid)
                 state["bridge_health_url"] = bridge_health
                 _write_json_atomic(paths.state_file, state)
                 return {
@@ -1625,7 +1703,7 @@ def start_services(
                 )
             old_bridge_pid = int(state.get("bridge_pid", 0))
             if bridge_owned and old_bridge_pid > 0:
-                _terminate_tree(old_bridge_pid)
+                _terminate_state_process(state, "bridge")
         if isinstance(existing_tunnel, Mapping):
             tunnel_owned = existing_tunnel.get("owned") is True
             existing_tunnel_health = existing_tunnel.get("health")
@@ -1640,7 +1718,7 @@ def start_services(
                 )
             old_tunnel_pid = int(state.get("tunnel_pid", 0))
             if tunnel_owned and old_tunnel_pid > 0:
-                _terminate_tree(old_tunnel_pid)
+                _terminate_state_process(state, "tunnel")
 
         paths.state_file.unlink(missing_ok=True)
     bridge_health_headers = _bridge_probe_headers(
@@ -1711,18 +1789,16 @@ def start_services(
             )
 
         state = {
-            "version": 1,
+            "version": 1 if os.name == "nt" else 2,
             "transport": provider.provider_id,
-            "bridge_pid": bridge_process.pid,
-            "tunnel_pid": tunnel_process.pid,
-            "bridge_process_marker": _process_marker(bridge_process.pid),
-            "tunnel_process_marker": _process_marker(tunnel_process.pid),
             "bridge_config": str(bridge_path),
             "projects_config": str(projects_path),
             "env_file": str(tunnel.env_file),
             "bridge_health_url": bridge_health,
             "tunnel_ready_url": tunnel_ready,
         }
+        _capture_process_state(state, "bridge", bridge_process.pid)
+        _capture_process_state(state, "tunnel", tunnel_process.pid)
         _write_json_atomic(paths.state_file, state)
         return {
             "status": "ok",
@@ -1779,12 +1855,8 @@ def status_services(paths: RuntimePaths) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         return {"status": "unknown", "error": f"cannot read lifecycle state: {exc}"}
 
-    bridge_owned = _matches_process_marker(
-        int(state.get("bridge_pid", 0)), state.get("bridge_process_marker")
-    )
-    tunnel_owned = _matches_process_marker(
-        int(state.get("tunnel_pid", 0)), state.get("tunnel_process_marker")
-    )
+    bridge_owned = _state_process_owned(state, "bridge")
+    tunnel_owned = _state_process_owned(state, "tunnel")
     network_status = security_status.get("network_trust")
     allowed_hosts = None
     if security_status.get("identity_level") == "network-only" and isinstance(
@@ -1874,11 +1946,12 @@ def stop_services(paths: RuntimePaths) -> dict[str, Any]:
     actions: list[dict[str, Any]] = []
     for category in ("tunnel", "bridge"):
         pid = int(state.get(f"{category}_pid", 0))
-        marker = state.get(f"{category}_process_marker")
-        if pid <= 0 or not _matches_process_marker(pid, marker):
+        if pid <= 0 or not _state_process_owned(state, category):
             actions.append({"service": category, "pid": pid or None, "status": "not_owned"})
             continue
-        _terminate_tree(pid)
+        if not _terminate_state_process(state, category):
+            actions.append({"service": category, "pid": pid, "status": "not_owned"})
+            continue
         actions.append({"service": category, "pid": pid, "status": "stopped"})
     paths.state_file.unlink(missing_ok=True)
     return {"status": "ok", "actions": actions}
@@ -1944,13 +2017,18 @@ def doctor_report(
         checks["auth"] = {**auth_status, "status": "ok"}
     else:
         checks["auth"] = auth_status
-    secret = _secret_from_runtime(paths, provider)
-    secret_path = _provider_secret_path(paths, provider)
-    secret_source = (
-        "environment"
-        if os.environ.get(provider.secret_env_name)
-        else ("windows-dpapi" if secret_path.is_file() else "none")
-    )
+    secret_source = "none"
+    try:
+        secret_value = _transport_secret_value(paths, provider)
+        secret = secret_value.value
+        secret_source = secret_value.source
+    except LifecycleError as exc:
+        secret = None
+        checks["secret_store"] = {
+            "status": "failed",
+            "source": "none",
+            "error": str(exc),
+        }
     checks.update(
         provider.doctor(
             _transport_context(paths),
@@ -1988,28 +2066,45 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def _terminate_tree(pid: int) -> None:
-    if os.name == "nt":
+def _ps_value(pid: int, field: str) -> str | None:
+    environment = os.environ.copy()
+    environment["LC_ALL"] = "C"
+    try:
         completed = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            ["ps", "-p", str(pid), "-o", f"{field}="],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=15,
+            timeout=5,
+            env=environment,
         )
-        if completed.returncode not in {0, 128}:
-            raise LifecycleError(f"failed to stop PID {pid}: {completed.stderr.strip()}")
-        return
-    try:
-        os.kill(pid, 15)
-    except ProcessLookupError:
-        return
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    value = " ".join((completed.stdout or "").split())
+    return value or None
 
 
 def _process_marker(pid: int) -> str | None:
     if os.name != "nt":
-        return str(pid) if _pid_exists(pid) else None
+        if pid <= 0:
+            return None
+        if sys.platform == "darwin":
+            started = _ps_value(pid, "lstart")
+            return f"darwin-lstart:{started}" if started else None
+        stat_path = Path(f"/proc/{pid}/stat")
+        try:
+            stat_text = stat_path.read_text(encoding="utf-8")
+            remainder = stat_text.rsplit(")", 1)[1].split()
+            if len(remainder) > 19:
+                return f"proc-start:{remainder[19]}"
+        except (OSError, IndexError):
+            pass
+        started = _ps_value(pid, "lstart")
+        return f"posix-lstart:{started}" if started else None
+
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
@@ -2033,11 +2128,140 @@ def _process_marker(pid: int) -> str | None:
         ctypes.windll.kernel32.CloseHandle(handle)
 
 
+def _process_executable_identity(pid: int) -> str | None:
+    if pid <= 0:
+        return None
+    if os.name == "nt":
+        return None
+    proc_executable = Path(f"/proc/{pid}/exe")
+    try:
+        if proc_executable.exists():
+            return str(proc_executable.resolve(strict=True))
+    except OSError:
+        pass
+    executable = _ps_value(pid, "comm")
+    if executable is None:
+        return None
+    candidate = Path(executable)
+    if candidate.is_absolute():
+        return str(candidate.resolve(strict=False))
+    return executable
+
+
+def _process_group_id(pid: int) -> int | None:
+    if os.name == "nt" or pid <= 0:
+        return None
+    try:
+        return int(os.getpgid(pid))
+    except (OSError, ProcessLookupError):
+        return None
+
+
+def _capture_process_state(state: dict[str, Any], category: str, pid: int) -> None:
+    marker = _process_marker(pid)
+    if marker is None:
+        raise LifecycleError(f"cannot establish {category} process start marker for PID {pid}")
+    state[f"{category}_pid"] = pid
+    state[f"{category}_process_marker"] = marker
+    if os.name == "nt":
+        return
+    pgid = _process_group_id(pid)
+    executable_identity = _process_executable_identity(pid)
+    if pgid is None or pgid <= 1 or pgid == os.getpgrp():
+        raise LifecycleError(f"cannot establish a safe {category} process group for PID {pid}")
+    if executable_identity is None:
+        raise LifecycleError(f"cannot establish {category} executable identity for PID {pid}")
+    state[f"{category}_pgid"] = pgid
+    state[f"{category}_executable_identity"] = executable_identity
+
+
 def _matches_process_marker(pid: int, marker: Any) -> bool:
     if pid <= 0 or marker is None:
         return False
     current = _process_marker(pid)
     return current is not None and str(current) == str(marker)
+
+
+def _state_process_owned(state: Mapping[str, Any], category: str) -> bool:
+    pid = int(state.get(f"{category}_pid", 0))
+    marker = state.get(f"{category}_process_marker")
+    if pid <= 0 or not _matches_process_marker(pid, marker):
+        return False
+    if os.name == "nt":
+        return True
+    try:
+        version = int(state.get("version", 0))
+        pgid = int(state.get(f"{category}_pgid", 0))
+    except (TypeError, ValueError):
+        return False
+    if version != 2:
+        return False
+    if pgid <= 1 or pgid == os.getpgrp():
+        return False
+    actual_pgid = _process_group_id(pid)
+    if actual_pgid is None or actual_pgid != pgid:
+        return False
+    expected_executable = state.get(f"{category}_executable_identity")
+    if not isinstance(expected_executable, str) or not expected_executable:
+        return False
+    return _process_executable_identity(pid) == expected_executable
+
+
+def _terminate_state_process(
+    state: Mapping[str, Any],
+    category: str,
+    *,
+    timeout_seconds: float = 5.0,
+) -> bool:
+    pid = int(state.get(f"{category}_pid", 0))
+    if not _state_process_owned(state, category):
+        return False
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        if completed.returncode not in {0, 128}:
+            raise LifecycleError(f"failed to stop PID {pid}: {completed.stderr.strip()}")
+        return True
+
+    pgid = int(state[f"{category}_pgid"])
+    if not _state_process_owned(state, category):
+        return False
+    try:
+        os.killpg(pgid, _POSIX_SIGTERM)
+    except ProcessLookupError:
+        return True
+
+    deadline = time.monotonic() + max(timeout_seconds, 0)
+    while time.monotonic() < deadline:
+        if not _state_process_owned(state, category):
+            return True
+        time.sleep(0.05)
+
+    if not _state_process_owned(state, category):
+        return True
+    try:
+        os.killpg(pgid, _POSIX_SIGKILL)
+    except ProcessLookupError:
+        return True
+    return True
+
+
+def _terminate_tree(pid: int) -> None:
+    if os.name == "nt":
+        state: dict[str, Any] = {"version": 1}
+    else:
+        state = {"version": 2}
+    try:
+        _capture_process_state(state, "process", pid)
+    except LifecycleError:
+        return
+    _terminate_state_process(state, "process")
 
 
 def _pid_exists(pid: int) -> bool:

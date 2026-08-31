@@ -1,82 +1,152 @@
-# Codemcp Remote 文档中心
+# codemcp-remote Documentation
 
-这里按“当前规范、执行指南、验收、计划、版本记录、验证报告、历史归档”分类，避免把历史证据误当成现行操作说明。
+[Simplified Chinese](zh-CN/README.md)
 
-## 从这里开始
+The English documentation is the **canonical project documentation**. Simplified Chinese documentation is maintained separately under [`docs/zh-CN/`](zh-CN/) as an adapted user-facing track. Historical validation evidence is not duplicated unless a translation is useful for operators.
 
-- [项目总览](../README.md)
-- [当前实施计划](implementation-plan.md)
-- [当前架构](architecture/architecture.md)
-- [Windows 从构建到安装与使用](guides/windows-build-install-use.md)
-- [运维手册](guides/operations-runbook.md)
+## Start here
+
+- [Project overview](../README.md)
+- [Architecture baseline](architecture/architecture.md)
+- [Windows build, install, and use](guides/windows-build-install-use.md)
+- [Operations runbook](guides/operations-runbook.md)
 - [Cloudflare Tunnel + ChatGPT network trust](guides/cloudflare-tunnel-setup.md)
-- [Secure MCP Tunnel 配置](guides/tunnel-setup.md)
-- [Phase 6 当前验收](acceptance/phase-6-validation.md)
-- [v0.1.0 最终验收门禁](acceptance/acceptance-test-plan.md)
+- [Security model](architecture/security-model.md)
+- [Threat model](architecture/threat-model.md)
+- [Git checkpoint and rollback policy](architecture/git-policy.md)
+- [macOS build, install, and clean-host validation](guides/macos-build-install-use.md)
+- [macOS v0.1.0 validation ledger](acceptance/macos-v0.1.0-validation.md)
 
-## 文档分类
+## Documentation model
 
-| 目录 | 内容 | 使用原则 |
+The repository separates current instructions from plans and historical evidence so that an old acceptance record cannot accidentally override current product behavior.
+
+| Path | Purpose | Authority |
 | --- | --- | --- |
-| `implementation-plan.md` | 当前活动实施计划 | 仅表示已规划的下一阶段，不表示已经实现；冻结后归档到 `plans/` |
-| `architecture/` | 当前架构；旧版本放在 `architecture/archive/` | 产品边界和设计决策以当前版本为准 |
-| `guides/` | 配置、集成、运行和项目结构说明 | 可执行操作优先从这里进入 |
-| `acceptance/` | 当前验收与 Freeze Gate；旧版本放在 `acceptance/archive/` | 执行前确认目标版本 |
-| `plans/` | 各版本实施计划及其归档副本 | 版本化计划不是当前任务的自动授权 |
-| `releases/` | 按版本归类的阶段说明和完成记录 | 用于理解能力演进 |
-| `reports/` | migration、testing、compatibility 验证证据 | 报告描述当时结果，不是现行 runbook |
-| `archive/` | 已退役 Cloudflare 材料、历史 handoff 和阶段 notes | 仅作审计与历史参考 |
+| `README.md` | Product overview and primary entry point | Current public overview |
+| `docs/architecture/` | Current architecture and security boundaries | Normative |
+| `docs/guides/` | Operator, deployment, build, and recovery instructions | Current operational guidance |
+| `docs/acceptance/` | Active acceptance criteria and release gates | Current release criteria |
+| `docs/implementation-plan.md` | Current active implementation plan | Planning only; not proof of support |
+| `docs/plans/` | Versioned or completed implementation plans | Historical/planning context |
+| `docs/releases/` | Version-specific phase records | Historical release evidence |
+| `docs/reports/` | Migration, testing, and compatibility evidence | Historical evidence |
+| `docs/development-state.md` | Recoverable engineering checkpoint for active parallel work | Branch-local development state |
+| `docs/zh-CN/` | Independent Simplified Chinese user documentation | Translation/adaptation; English remains canonical |
 
-## 当前文档
+## Current product boundaries
 
-### 架构与安全
+### Windows
 
-- [架构基线](architecture/architecture.md)
-- [Git checkpoint 与回滚策略](architecture/git-policy.md)
-- [安全模型](architecture/security-model.md)
-- [威胁模型](architecture/threat-model.md)
+The Windows `v0.1.0` release baseline has closed its product/runtime acceptance gates. The distributed release is intentionally **NotSigned**, so SmartScreen/reputation warnings remain an accepted limitation. GitHub-hosted CI limitations recorded by the release process remain an explicit accepted risk rather than a false PASS.
 
-### 执行指南
+The installed Windows runtime uses:
 
-- [Windows 从构建到安装与使用](guides/windows-build-install-use.md)
-- [codemcp 固定版本基线](guides/codemcp-baseline.md)
-- [运维手册](guides/operations-runbook.md)
-- [Cloudflare Tunnel + ChatGPT network trust（推荐个人部署）](guides/cloudflare-tunnel-setup.md)
-- [Secure MCP Tunnel 配置](guides/tunnel-setup.md)
-- [External mcp-auth-server（可选 OAuth advanced profile）](guides/external-mcp-auth-setup.md)
+```text
+ChatGPT Connector
+  -> OpenAI / ChatGPT Connector egress
+  -> Cloudflare WAF/IP allowlist
+  -> Cloudflare Tunnel
+  -> loopback codemcp-remote Bridge
+  -> native Windows codemcp worker
+  -> registered local Git repository
+```
 
-### 当前验收与计划
+Git for Windows is the explicit runtime prerequisite. Python, `uv`, PowerShell 7, and WSL2 are not required by the packaged runtime.
 
-- [Phase 6 Windows 运维验收](acceptance/phase-6-validation.md)
-- [Phase 7 / v0.1.0 最终验收](acceptance/acceptance-test-plan.md)
-- [v0.1.0 开源整改计划](plans/v0.1.0/open-source-readiness-plan.md)
+### macOS
 
-### 版本记录与验证证据
+macOS dual-architecture packaging is an active additive release track. The native GitHub-hosted candidate gate has passed for `arm64` and `x86_64`, but real clean-host acceptance is still required before macOS is described as supported.
 
-- [v0.1.0 Draft Release Notes](releases/v0.1.0/release-notes.md)
-- [v0.1.0 阶段记录](releases/v0.1.0/)
-- [迁移与基线报告](reports/migration/)
-- [测试报告](reports/testing/)
-- [兼容性报告](reports/compatibility/)
+Current candidate policy:
 
-## 当前运行与退役边界
+- `codemcp-remote-v0.1.0-macos-arm64.tar.gz`
+- `codemcp-remote-v0.1.0-macos-intel64.tar.gz`
+- ad-hoc code signing;
+- no Developer ID certificate;
+- no notarization;
+- expected Gatekeeper quarantine friction until the user verifies the archive and explicitly releases quarantine.
 
-- 推荐公网路径是 ChatGPT Connector（`Authentication = No authentication`）→ OpenAI
-  Connector egress → Cloudflare WAF IP allowlist → Cloudflare Tunnel → loopback Bridge；
-  OpenAI Secure MCP Tunnel 仍是可选兼容 transport。
-- Cloudflare IP allowlist 是 network trust boundary，不是 authentication 或 user identity；
-  需要 subject/client/scope 身份时使用可选 OAuth Resource Server profile。
-- 当前可执行说明以 `guides/`、`architecture/` 和 `acceptance/` 中的文档为准。
-- `releases/` 中的 Phase 0–5 文件是已完成阶段记录；`reports/` 中的内容是当时的
-  验证证据，不能替代当前 runbook 或尚未完成的 release gate。
-- Cloudflare No-Auth network-trust 的 Phase A–H live acceptance 已通过；项目注册热加载也已实现：本机 CLI 是唯一项目授权控制面，运行中的 Bridge 可自动观察经过验证的 `projects.toml` add/remove 变更，无需重启 Bridge/Tunnel/Connector；MCP 不提供项目管理能力。
-- 稳定版 `v0.1.0` 仍受更大的 Phase 6/7、secrets/supply-chain、clean-machine packaging 和 freeze gate 阻断。
-- 当前没有需要放入 `archive/` 的退役文档；后续被替代的文档按维护约定归档。
+See the [active macOS implementation plan](implementation-plan.md) and [validation ledger](acceptance/macos-v0.1.0-validation.md).
 
-## 维护约定
+### Remote transport and identity
 
-1. `docs/` 根目录只保留本索引和当前活动 `implementation-plan.md`；计划冻结后移入 `plans/`。
-2. 当前文档放在分类目录根部，已取代或仅具历史价值的内容进入相应 `archive/`。
-3. 迁移、测试和兼容性结果分别进入 `reports/migration/`、`reports/testing/`、`reports/compatibility/`。
-4. `domain-schema.sql`、`mcp-contract.json` 等机器可读契约继续保留在仓库根目录，不与说明文档混放。
-5. 移动文档时同步更新 README、测试和文档内引用，并执行完整回归。
+The recommended personal deployment is Cloudflare network trust with ChatGPT Connector `Authentication = No authentication`.
+
+Cloudflare IP allowlisting is a **network provenance boundary**, not human/user/workspace/conversation authentication. The optional OAuth Resource Server profile remains available when subject/client/scope identity is required. OpenAI Secure MCP Tunnel remains an optional compatibility transport.
+
+## Current architecture and security
+
+Read these before exposing a repository remotely:
+
+- [Architecture baseline](architecture/architecture.md)
+- [Security model](architecture/security-model.md)
+- [Threat model](architecture/threat-model.md)
+- [Git policy](architecture/git-policy.md)
+- [codemcp pinned baseline](guides/codemcp-baseline.md)
+
+Important invariants include:
+
+- only explicitly registered projects are accessible;
+- all file paths remain inside the registered project root;
+- sensitive paths are denied by default;
+- arbitrary shell and arbitrary caller-supplied argv are not exposed;
+- mutations are serialized, idempotent, checkpointed, and Git-guarded;
+- high-risk operations use explicit approval;
+- uncertain side effects remain `unknown` until reconciled;
+- the Bridge remains loopback-only;
+- repository content cannot grant itself privileges.
+
+## Operator guides
+
+- [Windows build, install, and use](guides/windows-build-install-use.md)
+- [Clean Windows release validation](guides/clean-machine-validation.md)
+- [Operations runbook](guides/operations-runbook.md)
+- [Cloudflare Tunnel + ChatGPT network trust](guides/cloudflare-tunnel-setup.md)
+- [OpenAI Secure MCP Tunnel compatibility setup](guides/tunnel-setup.md)
+- [External mcp-auth-server setup](guides/external-mcp-auth-setup.md)
+- [macOS build, install, and clean-host validation](guides/macos-build-install-use.md)
+
+## Acceptance and release evidence
+
+Current acceptance criteria:
+
+- [Phase 6 Windows operational validation](acceptance/phase-6-validation.md)
+- [Phase 7 / v0.1.0 final release gate](acceptance/acceptance-test-plan.md)
+- [macOS v0.1.0 validation ledger](acceptance/macos-v0.1.0-validation.md)
+
+Historical evidence:
+
+- [v0.1.0 phase records](releases/v0.1.0/)
+- [Migration reports](reports/migration/)
+- [Testing reports](reports/testing/)
+- [Compatibility reports](reports/compatibility/)
+
+Historical evidence describes what was verified at a specific point in time. It must not be used as a replacement for current architecture, guides, or acceptance criteria.
+
+## Plans
+
+- [Active macOS dual-architecture implementation plan](implementation-plan.md)
+- [Project registry hot-reload plan](plans/project-registry-hot-reload-plan.md)
+- [v0.1.0 Cloudflare transport/OAuth plan](plans/v0.1.0/cloudflare-transport-oauth-plan.md)
+- [v0.1.0 open-source readiness plan](plans/v0.1.0/open-source-readiness-plan.md)
+- [Frozen Windows release baseline](plans/v0.1.0/windows-release-baseline-2026-08-28.md)
+
+A plan authorizes or describes intended work only. It does not prove that the planned capability is implemented or supported.
+
+## Language policy
+
+1. English is the canonical/default language for `README.md`, `bridge/README.md`, and documentation outside `docs/zh-CN/`.
+2. Simplified Chinese documentation lives only in dedicated `*.zh-CN.md` files and `docs/zh-CN/`.
+3. Chinese documentation is adapted for usability rather than mechanically mirroring every historical file.
+4. Normative behavior, release gates, and security claims are resolved from the English canonical document when translations differ.
+5. A language-guard test prevents Han text from being reintroduced into default English documentation.
+
+## Maintenance rules
+
+1. Keep current architecture, guides, and acceptance documents distinct from historical reports.
+2. Keep the active implementation plan at `docs/implementation-plan.md`; archive it under `docs/plans/` when the work is frozen or superseded.
+3. Put migration, testing, and compatibility evidence under their matching `docs/reports/` subdirectories.
+4. Update links whenever documents move.
+5. Preserve `docs/development-state.md` as a recoverable checkpoint and record parallel branches explicitly.
+6. Run the project regression suite after documentation moves that can affect packaging, tests, or published links.

@@ -77,5 +77,5 @@ The failure and recovery matrix was also completed on 2026-08-22:
   plaintext API-key rejection.
 
 Phase 5 account-backed validation is complete. Phase 6 remains intentionally
-unstarted; its operationalization work must follow the plan in
-[implementation plan](../../implementation-plan.md).
+unstarted; its operationalization work must follow the frozen Windows plan in
+[Windows release baseline](../../plans/v0.1.0/windows-release-baseline-2026-08-28.md).

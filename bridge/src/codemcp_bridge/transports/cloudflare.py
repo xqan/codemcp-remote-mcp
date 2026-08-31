@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from ctypes import wintypes
@@ -23,6 +24,7 @@ DEFAULT_ORIGIN_URL = "http://127.0.0.1:46200/mcp"
 DEFAULT_METRICS_ADDR = "127.0.0.1:46202"
 BUNDLED_WINDOWS_AMD64_VERSION = "2026.7.3"
 BUNDLED_WINDOWS_AMD64_SHA256 = "8635da433b6df8194746e88ed9d2589566c20e38bfc2a80e431a348b7c765841"
+BUNDLED_MACOS_VERSION = "2026.7.3"
 SECRET_ENV_NAME = "TUNNEL_TOKEN"
 SECRET_FILE_NAME = "cloudflare-tunnel-token.dpapi"
 ALLOWED_ENV_NAMES = {
@@ -273,24 +275,36 @@ class CloudflareTunnelProvider:
         return settings.env_file
 
     def find_client(self, context: TransportContext) -> Path:
+        executable_name = "cloudflared.exe" if os.name == "nt" else "cloudflared"
         candidates = [
-            context.runtime_root / "cloudflared.exe",
-            context.runtime_root / "cloudflared",
+            context.bundled_runtime_root / "bin" / executable_name,
+            context.runtime_root / executable_name,
         ]
+        if os.name == "nt":
+            candidates.append(context.runtime_root / "cloudflared")
         discovered = shutil.which("cloudflared")
         if discovered:
             candidates.append(Path(discovered))
         for candidate in candidates:
             if candidate.is_file():
                 return candidate.resolve(strict=False)
-        raise LifecycleError("cloudflared was not found beside the executable or on PATH")
+        raise LifecycleError(
+            "cloudflared was not found in the bundled runtime, beside the executable, or on PATH"
+        )
 
     def client_version(self, context: TransportContext) -> str:
         client = self.find_client(context)
         bundled_windows = os.name == "nt" and client == (
+            context.bundled_runtime_root / "bin" / "cloudflared.exe"
+        ).resolve(strict=False)
+        legacy_windows = os.name == "nt" and client == (
             context.runtime_root / "cloudflared.exe"
         ).resolve(strict=False)
-        if bundled_windows:
+        bundled_macos = sys.platform == "darwin" and client == (
+            context.bundled_runtime_root / "bin" / "cloudflared"
+        ).resolve(strict=False)
+        pinned_windows = bundled_windows or legacy_windows
+        if pinned_windows:
             digest = hashlib.sha256(client.read_bytes()).hexdigest()
             if digest.lower() != BUNDLED_WINDOWS_AMD64_SHA256:
                 raise LifecycleError(
@@ -319,7 +333,9 @@ class CloudflareTunnelProvider:
         if match is None:
             raise LifecycleError("cloudflared version output is not recognized")
         version = match.group(1)
-        if bundled_windows and version != BUNDLED_WINDOWS_AMD64_VERSION:
+        if pinned_windows and version != BUNDLED_WINDOWS_AMD64_VERSION:
+            raise LifecycleError("bundled cloudflared version does not match the pinned release")
+        if bundled_macos and version != BUNDLED_MACOS_VERSION:
             raise LifecycleError("bundled cloudflared version does not match the pinned release")
         return version
 

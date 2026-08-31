@@ -1,0 +1,76 @@
+{
+  "assets": {
+    "altgraph": {
+      "filename": "altgraph-0.17.5-py2.py3-none-any.whl",
+      "kind": "wheel",
+      "sha256": "f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597",
+      "url": "https://files.pythonhosted.org/packages/a9/ba/000a1996d4308bc65120167c21241a3b205464a2e0b58deda26ae8ac21d1/altgraph-0.17.5-py2.py3-none-any.whl",
+      "version": "0.17.5"
+    },
+    "cloudflared-arm64": {
+      "archive_member": "cloudflared",
+      "filename": "cloudflared-darwin-arm64.tgz",
+      "github_asset_digest_sha256": "90c5a4f914d705fd70c135dba6d80b1791d254b08d6d4136301941f88330dd09",
+      "kind": "tgz",
+      "sha256": "90c5a4f914d705fd70c135dba6d80b1791d254b08d6d4136301941f88330dd09",
+      "upstream_release_notes_sha256": "f35c50089cd25f77a4cb5a2152036bc26db15aa31fbe11f7995d2e42a4ed6257",
+      "url": "https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-darwin-arm64.tgz",
+      "version": "2026.7.3"
+    },
+    "cloudflared-x86_64": {
+      "archive_member": "cloudflared",
+      "filename": "cloudflared-darwin-amd64.tgz",
+      "github_asset_digest_sha256": "70d1c8684fa6d14b5843787ec8d1ea8e18b23650e424f4ea43d849a506487c3b",
+      "kind": "tgz",
+      "sha256": "70d1c8684fa6d14b5843787ec8d1ea8e18b23650e424f4ea43d849a506487c3b",
+      "upstream_release_notes_sha256": "e88fe5874d42a94f49a7ea59cabc3722d2962d0449232b0f3b1a426a712e275c",
+      "url": "https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-darwin-amd64.tgz",
+      "version": "2026.7.3"
+    },
+    "macholib": {
+      "filename": "macholib-1.16.4-py2.py3-none-any.whl",
+      "kind": "wheel",
+      "sha256": "da1a3fa8266e30f0ce7e97c6a54eefaae8edd1e5f86f3eb8b95457cae90265ea",
+      "url": "https://files.pythonhosted.org/packages/c7/d1/a9f36f8ecdf0fb7c9b1e78c8d7af12b8c8754e74851ac7b94a8305540fc7/macholib-1.16.4-py2.py3-none-any.whl",
+      "version": "1.16.4"
+    },
+    "packaging": {
+      "filename": "packaging-26.3-py3-none-any.whl",
+      "kind": "wheel",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+      "version": "26.3"
+    },
+    "pyinstaller": {
+      "filename": "pyinstaller-6.22.2-py3-none-macosx_10_13_universal2.whl",
+      "kind": "wheel",
+      "sha256": "ebd1b1ca932d7cf25d7366ce691aaf79a5ff9425811ed7328b5116e4471b6d6d",
+      "url": "https://files.pythonhosted.org/packages/57/39/08cd53632276de70426e7c273820277a48253fee397b4048301ec03c3566/pyinstaller-6.22.2-py3-none-macosx_10_13_universal2.whl",
+      "version": "6.22.2"
+    },
+    "pyinstaller-hooks-contrib": {
+      "filename": "pyinstaller_hooks_contrib-2026.6-py3-none-any.whl",
+      "kind": "wheel",
+      "sha256": "fd13b8ac126b35361175edacd41a0d97080b75dd5f4b594ecefefff969509dd3",
+      "url": "https://files.pythonhosted.org/packages/e7/31/f2d7343d8ed5f7c4678377886f6ce533e6eaaa131b252ce950114c2a7efa/pyinstaller_hooks_contrib-2026.6-py3-none-any.whl",
+      "version": "2026.6"
+    },
+    "setuptools": {
+      "filename": "setuptools-84.0.0-py3-none-any.whl",
+      "kind": "wheel",
+      "sha256": "51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670",
+      "url": "https://files.pythonhosted.org/packages/95/9c/c510029fc6ef33a6275cd2c5d3cecd6613dfd6aa401d57c54f1c18852ccf/setuptools-84.0.0-py3-none-any.whl",
+      "version": "84.0.0"
+    }
+  },
+  "cloudflared_license": {
+    "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd",
+    "source_commit": "3a2b45c",
+    "spdx": "Apache-2.0",
+    "url": "https://raw.githubusercontent.com/cloudflare/cloudflared/3a2b45c/LICENSE",
+    "version": "2026.7.3"
+  },
+  "integrity_blockers": [],
+  "release_version": "0.1.0",
+  "schema": "codemcp-remote-release-assets-v1"
+}

@@ -80,7 +80,7 @@ def _settings(project: Path, data_dir: Path) -> BridgeSettings:
         server=ServerSettings("127.0.0.1", 46200, "/mcp", "streamable-http"),
         storage=StorageSettings(data_dir, data_dir / "bridge.sqlite3", data_dir / "logs"),
         policy=PolicySettings(False, False, False, True, 4096, 16_384, "per-project"),
-        codemcp=CodemcpSettings("wsl2", "Ubuntu", None, 30, 60, 5),
+        codemcp=CodemcpSettings("local", "Ubuntu", None, 30, 60, 5),
         projects={"integration": spec},
     )
 

@@ -17,6 +17,7 @@ class TransportContext:
     """Provider-visible runtime paths without coupling providers to lifecycle.RuntimePaths."""
 
     runtime_root: Path
+    bundled_runtime_root: Path
     app_root: Path
     config_dir: Path
     log_dir: Path
